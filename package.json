@@ -1,0 +1,15 @@
+{
+  "name": "havalimani-tycoon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tarayıcıda çalışan havalimanı kurma ve işletme oyunu",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "three": "0.187.0"
+  }
+}

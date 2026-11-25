@@ -64,6 +64,20 @@ class Game {
     document.getElementById('loading').remove();
     if (this.hasSave()) this.load(true);
     else this.welcome();
+    document.getElementById('file-in').addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) this.readFile(f);
+    });
+    window.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.code === 'KeyS') {
+        e.preventDefault();
+        this.exportFile();
+      } else if (e.code === 'KeyO') {
+        e.preventDefault();
+        this.importFile();
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.save(false);
     });
@@ -125,7 +139,8 @@ class Game {
 
   followAc(ac) {
     this.rig.follow = () => (this.sim.ac.includes(ac) ? { x: ac.x, z: ac.z } : null);
-    if (this.rig.dist > 420) this.rig.dist = 420;
+    this.rig.anchor = null;
+    this.rig.distGoal = Math.min(this.rig.distGoal, 420);
   }
 
   // ---------------------------------------------------------------- döngü
@@ -212,7 +227,74 @@ class Game {
     runs.push(prev, n);
     const objects = [...W.objects.values()].map((o) => ({ id: o.id, kind: o.kind, i: o.i, j: o.j, rot: o.rot, len: o.len, size: o.size, num: o.num, jetway: !!o.jetway, active: o.active || 0 }));
     const flights = this.sim.flights.filter((f) => f.status === 'planned' && f.arr > this.time).map((f) => ({ ...f }));
-    return { v: 1, time: this.time, speed: this.lastSpeed, ground: runs, objects, standNum: W.standNum, econ: this.econ.toJSON(), flights, lastDay: this.econ.lastDay };
+    const R = this.rig;
+    const cam = { x: Math.round(R.target.x), z: Math.round(R.target.z), dist: Math.round(R.dist), yaw: +R.yaw.toFixed(3), pitch: +R.pitch.toFixed(3) };
+    return { v: 1, time: this.time, speed: this.lastSpeed, ground: runs, objects, standNum: W.standNum, econ: this.econ.toJSON(), flights, lastDay: this.econ.lastDay, cam };
+  }
+
+  // ---------------------------------------------------------------- kayıt dosyası (indir / yükle)
+  validate(s) {
+    if (!s || typeof s !== 'object') throw new Error('bu bir oyun kaydı değil');
+    if (s.game && s.game !== 'havalimani-tycoon') throw new Error('başka bir oyunun dosyası');
+    if (s.v !== 1 || !Array.isArray(s.ground) || !Array.isArray(s.objects) || !s.econ || typeof s.time !== 'number') throw new Error('kayıt biçimi tanınmadı');
+    let n = 0;
+    for (let r = 1; r < s.ground.length; r += 2) n += s.ground[r];
+    if (n !== MAP_W * MAP_H) throw new Error('harita boyutu uyuşmuyor');
+    for (const o of s.objects) if (!['runway', 'stand', 'terminal', 'tower', 'hangar'].includes(o.kind)) throw new Error('tanınmayan yapı: ' + o.kind);
+  }
+
+  exportFile() {
+    const s = { game: 'havalimani-tycoon', savedAt: new Date().toISOString(), ...this.serialize() };
+    const d = new Date();
+    const p2 = (v) => String(v).padStart(2, '0');
+    const name = `havalimani-${this.day()}-gun-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.json`;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(s)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    this.save(false);
+    this.ui.toast(`Kayıt dosyası indirildi: ${name}`, 'good');
+  }
+
+  importFile() {
+    const inp = document.getElementById('file-in');
+    inp.value = '';
+    inp.click();
+  }
+
+  readFile(file) {
+    const rd = new FileReader();
+    rd.onerror = () => this.ui.toast('Dosya okunamadı', 'bad');
+    rd.onload = () => {
+      let s;
+      try {
+        s = JSON.parse(String(rd.result).replace(/^\uFEFF/, ''));
+        this.validate(s);
+      } catch (e) {
+        this.ui.toast(`Kayıt dosyası açılamadı: ${e.message || 'geçersiz dosya'}`, 'bad');
+        return;
+      }
+      const day = Math.floor(s.time / 1440) + 1;
+      const when = s.savedAt ? new Date(s.savedAt).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+      this.ui.ask('Kayıt dosyası yüklensin mi?', `${file.name}: ${day}. gün, kasada ${money(s.econ.money)}${when ? `, kaydedildiği an ${when}` : ''}. Şu anki oyun bu kayıtla değişir.`, 'Yükle', () => {
+        const backup = this.serialize();
+        try {
+          this.apply(s);
+          this.save(false);
+          this.ui.toast(`Kayıt yüklendi: ${day}. gün`, 'good');
+        } catch (e) {
+          console.error(e);
+          this.apply(backup);
+          this.ui.toast('Kayıt yüklenemedi, oyun eski haline döndü', 'bad');
+        }
+      });
+    };
+    rd.readAsText(file);
   }
 
   save(manual) {
@@ -254,6 +336,15 @@ class Game {
     this.econ.lastDay = s.lastDay || this.day();
     this.sim.flights = s.flights || [];
     this.lastSpeed = s.speed || 1;
+    if (s.cam) {
+      const R = this.rig;
+      R.follow = null;
+      R.target.set(s.cam.x || 0, 0, s.cam.z || 0);
+      R.dist = s.cam.dist || 900;
+      R.yaw = s.cam.yaw ?? R.yaw;
+      R.pitch = s.cam.pitch ?? R.pitch;
+      R.apply();
+    }
   }
 
   load(silent) {

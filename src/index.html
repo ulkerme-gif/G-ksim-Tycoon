@@ -45,6 +45,12 @@
   <div id="panel-body"></div>
 </aside>
 
+<div id="zoomctl" role="group" aria-label="Yakınlaştırma">
+  <button data-z="in" title="Yakınlaştır (+)" aria-label="Yakınlaştır"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button data-z="out" title="Uzaklaştır (−)" aria-label="Uzaklaştır"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <button data-z="north" title="Kuzeye döndür" aria-label="Kuzeye döndür"><svg id="compass" viewBox="0 0 24 24"><path d="M12 3l4 9h-8z" fill="#ff6b6b" stroke="#ff6b6b"/><path d="M12 21l-4-9h8z"/></svg></button>
+</div>
+<input type="file" id="file-in" accept=".json,application/json,text/plain" hidden>
 <div id="sel" hidden></div>
 <div id="toasts" aria-live="polite"></div>
 <div id="modal" hidden><div id="modal-card"></div></div>

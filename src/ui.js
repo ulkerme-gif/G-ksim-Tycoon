@@ -59,6 +59,14 @@ export class UI {
     $('#confirm-cancel').addEventListener('click', () => this.game.builder.cancel());
     $('#confirm-rot').addEventListener('click', () => this.game.builder.rotate());
     $('#menu-btn').addEventListener('click', () => this.menu());
+    $('#zoomctl').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-z]');
+      if (!b) return;
+      const R = this.game.rig;
+      if (b.dataset.z === 'in') R.zoomStep(1);
+      else if (b.dataset.z === 'out') R.zoomStep(-1);
+      else R.resetNorth();
+    });
     $('#modal').addEventListener('click', (e) => {
       if (e.target.id === 'modal') this.closeModal();
     });
@@ -167,12 +175,16 @@ export class UI {
     const has = g.hasSave();
     this.modal(`<h2>Havalimanı Tycoon</h2>
       <div class="col">
-        <button class="btn" data-m="save">Oyunu kaydet</button>
-        <button class="btn" data-m="load" ${has ? '' : 'disabled'}>Kayıtlı oyunu yükle</button>
+        <button class="btn primary" data-m="export">Dosyaya kaydet (indir)</button>
+        <button class="btn" data-m="import">Dosyadan yükle</button>
+        <button class="btn" data-m="save">Tarayıcıya kaydet</button>
+        <button class="btn" data-m="load" ${has ? '' : 'disabled'}>Tarayıcıdaki kaydı yükle</button>
         <button class="btn" data-m="new">Yeni oyun</button>
         <button class="btn" data-m="help">Kontroller</button>
         <button class="btn" data-m="close">Kapat</button>
-      </div><p class="muted">Oyun her oyun saatinde kendiliğinden kaydedilir.</p>`, (k) => {
+      </div><p class="muted">Oyun her oyun saatinde tarayıcıya kendiliğinden kaydedilir. Dosyaya kaydettiğiniz ilerlemeyi başka bir cihazda ya da tarayıcı verisi silindikten sonra açabilirsiniz (iPad'de dosya İndirilenler klasörüne gider). Kısayollar: Ctrl/⌘+S kaydet, Ctrl/⌘+O aç.</p>`, (k) => {
+      if (k === 'export') g.exportFile();
+      if (k === 'import') g.importFile();
       if (k === 'save') g.save(true);
       if (k === 'load') g.load();
       if (k === 'new') this.ask('Yeni oyun başlasın mı?', 'Kaydedilmemiş ilerleme kaybolur.', 'Yeni oyun', () => g.newGame());
@@ -184,8 +196,9 @@ export class UI {
     this.modal(`<h2>Kontroller</h2>
       <table class="keys">
         <tr><td>Kaydırma</td><td>Sol tık sürükle · tek parmak · WASD / oklar</td></tr>
-        <tr><td>Döndürme</td><td>Sağ tık sürükle · iki parmak çevir · Q / E</td></tr>
-        <tr><td>Yakınlaştırma</td><td>Tekerlek · iki parmak kıstır · + / −</td></tr>
+        <tr><td>Yakınlaştırma</td><td>Tekerlek · trackpad'de kıstır · iki parmak kıstır · çift dokun · + / − düğmeleri ya da tuşları</td></tr>
+        <tr><td>Döndürme</td><td>Sağ tık sürükle · iki parmakla belirgin çevir · Q / E · pusula kuzeye döndürür</td></tr>
+        <tr><td>Eğme</td><td>Sağ tık yukarı/aşağı · iki parmağı birlikte yukarı/aşağı kaydır · PageUp / PageDown</td></tr>
         <tr><td>İnşaat</td><td>Soldaki araçlar ya da 1–9 tuşları; R döndürür, Esc seçime döner</td></tr>
         <tr><td>Boyama</td><td>Taksi yolu, apron ve yıkım: sürükleyin (iPad'de tek parmak)</td></tr>
         <tr><td>Zaman</td><td>Boşluk duraklatır; üstteki düğmelerle hız</td></tr>
@@ -385,6 +398,7 @@ export class UI {
     const rw = g.world.list('runway')[0];
     $('#wind').textContent = `Rüzgâr ${String(E.wind.from).padStart(3, '0')}° ${E.wind.kt} kt` + (rw ? ` · Pist ${g.world.runwayInfo(rw).ends[rw.active || 0].name}` : '');
     document.querySelectorAll('#speed [data-speed]').forEach((b) => b.classList.toggle('on', +b.dataset.speed === g.speed));
+    $('#compass').style.transform = `rotate(${(g.rig.yaw * 180) / Math.PI}deg)`;
     const nextF = g.sim.flights.find((f) => f.status === 'planned' && f.arr > g.time);
     $('#next').textContent = nextF ? `Sıradaki: ${nextF.code} ${hhmm(nextF.arr)}` : '';
     if (this.panel) {

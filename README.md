@@ -10,19 +10,28 @@ Tarayıcıda çalışan, 3B havalimanı kurma ve işletme oyunu. Boş bir arazid
 2. **Settings → Pages** bölümünde kaynak olarak ana dalı ve kök dizini (`/`) seçin. "GitHub Actions" kullanıyorsanız **Static HTML** iş akışı da olur.
 3. Birkaç dakika sonra oyun `https://<kullanıcı-adı>.github.io/<depo-adı>/` adresinde açılır.
 
-Oyun ilerlemesi tarayıcıda (localStorage) kaydedilir. Her oyun saatinde ve sekme kapanırken kendiliğinden kaydeder.
-
 ## Kontroller
 
 | İşlem | Fare / klavye | iPad |
 |---|---|---|
 | Kaydırma | Sol tık sürükle, WASD, oklar | Tek parmak |
-| Döndürme | Sağ tık sürükle, Q / E | İki parmak çevir |
-| Yakınlaştırma | Tekerlek, + / − | İki parmak kıstır |
+| Yakınlaştırma | Tekerlek, trackpad'de kıstır, + / − | İki parmak kıstır, çift dokun, sağ alttaki + / − |
+| Döndürme | Sağ tık sürükle, Q / E | İki parmakla belirgin çevir |
+| Eğme | Sağ tık yukarı/aşağı, PageUp / PageDown | İki parmağı birlikte yukarı/aşağı kaydır |
+| Kuzeye dön | Sağ alttaki pusula | Sağ alttaki pusula |
 | İnşaat araçları | Soldaki düğmeler, 1–9 | Soldaki düğmeler |
 | Döndür | R | Alttaki "Döndür" |
 | Taksi yolu, apron, yıkım | Sürükle | Tek parmakla sürükle |
 | Duraklat | Boşluk | Üstteki ‖ düğmesi |
+| Dosyaya kaydet / dosyadan aç | Ctrl/⌘+S, Ctrl/⌘+O | Menü (☰) |
+
+Yakınlaştırırken parmakların ya da imlecin altındaki nokta yerinde kalır. Çok yakındayken kamera kendiliğinden yatıklaşır, uçaklar yandan görünür.
+
+## Kayıt
+
+- Oyun her oyun saatinde ve sekme kapanırken tarayıcıya (localStorage) kendiliğinden kaydedilir.
+- **Menü → Dosyaya kaydet** ilerlemeyi küçük bir `.json` dosyası olarak indirir (iPad'de Dosyalar uygulamasında İndirilenler klasörüne gider). **Menü → Dosyadan yükle** ile bu dosyayı başka bir cihazda ya da tarayıcı verisi silindikten sonra açabilirsiniz.
+- Kayıt anında havada ya da yerde olan uçaklar kayda girmez; tarife kaldığı yerden devam eder.
 
 ## Oynanış
 

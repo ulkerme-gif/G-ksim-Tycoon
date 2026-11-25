@@ -49,23 +49,30 @@ export const BUILDINGS = {
 };
 
 export const STANDS = {
-  S: { size: 3, name: 'Dar gövde park yeri', short: 'Dar', fits: ['narrow'], cost: 'standS' },
-  L: { size: 5, name: 'Geniş gövde park yeri', short: 'Geniş', fits: ['narrow', 'wide'], cost: 'standL' },
+  S: { size: 3, name: 'Dar gövde park yeri', short: 'Dar', fits: ['regional', 'narrow'], cost: 'standS' },
+  L: { size: 5, name: 'Geniş gövde park yeri', short: 'Geniş', fits: ['regional', 'narrow', 'wide'], cost: 'standL' },
 };
 
 // uçak tipleri (ölçüler metre; hızlar gerçek zaman m/s, 1x hızda)
 export const AIRCRAFT = {
+  regional: {
+    name: 'Bölgesel jet', model: 'e170', len: 29.8, span: 25.7, dia: 3.3, tail: 9.8,
+    seats: 78, minRunway: 1400, turnMin: 30, landingFee: 25_000,
+    vApp: 66, vTouch: 62, vRot: 66, accel: 2.8, decel: 3.4, rMin: 24,
+    doorFromNose: 3.9, gearZ: 1.3, sill: 2.0,
+    lights: { wingY: 3.25, wingZ: 3.6, wingX: 12.5, top: 4.85, noseZ: -11.1, noseY: 1.6 },
+  },
   narrow: {
     name: 'Dar gövde', len: 37.6, span: 35.8, dia: 3.95, tail: 11.8,
     seats: 180, minRunway: 1600, turnMin: 40, landingFee: 45_000,
     vApp: 70, vTouch: 66, vRot: 72, accel: 2.7, decel: 3.3, rMin: 28,
-    doorFromNose: 6.5, gearZ: 1.6,
+    doorFromNose: 6.5, gearZ: 1.6, sill: 3.3,
   },
   wide: {
     name: 'Geniş gövde', len: 73.9, span: 64.8, dia: 6.2, tail: 18.5,
     seats: 360, minRunway: 2400, turnMin: 70, landingFee: 120_000,
     vApp: 75, vTouch: 72, vRot: 82, accel: 2.3, decel: 2.9, rMin: 42,
-    doorFromNose: 8.5, gearZ: 2.2,
+    doorFromNose: 8.5, gearZ: 2.2, sill: 4.8,
   },
 };
 
@@ -82,8 +89,8 @@ export const TAXI_TURN_SPEED = 6;
 
 // havayolları (kurgusal)
 export const AIRLINES = [
-  { id: 'LH', name: 'Lale Hava', code: 'LL', tail: '#d6336c', stripe: '#8e1b46', type: 'narrow', minStars: 0, perDay: [3, 4], load: 0.82 },
-  { id: 'BG', name: 'Boğaz Air', code: 'BZ', tail: '#1f6fd1', stripe: '#0c3d7a', type: 'narrow', minStars: 0, perDay: [2, 4], load: 0.78 },
+  { id: 'LH', name: 'Lale Hava', code: 'LL', tail: '#d6336c', stripe: '#8e1b46', type: 'regional', minStars: 0, perDay: [4, 6], load: 0.84 },
+  { id: 'BG', name: 'Boğaz Air', code: 'BZ', tail: '#1f6fd1', stripe: '#0c3d7a', type: 'regional', minStars: 0, perDay: [3, 5], load: 0.8 },
   { id: 'KP', name: 'Kapadokya Airlines', code: 'KP', tail: '#e8892b', stripe: '#9a4d0b', type: 'narrow', minStars: 1.5, perDay: [3, 5], load: 0.85 },
   { id: 'EG', name: 'Ege Kanatları', code: 'EK', tail: '#14a5a5', stripe: '#0b5c5c', type: 'narrow', minStars: 2, perDay: [4, 6], load: 0.8 },
   { id: 'TR', name: 'Toros Jet', code: 'TJ', tail: '#2f9e44', stripe: '#16502a', type: 'narrow', minStars: 2.5, perDay: [5, 7], load: 0.84 },

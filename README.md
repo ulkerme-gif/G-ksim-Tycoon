@@ -66,4 +66,9 @@ Bu komut Three.js'i, kodu ve modelleri tek bir `index.html` dosyasına paketler.
 
 ## Modeller
 
-Terminal, kontrol kulesi ve yolcu köprüsü modelleri ile hangar dokuları oyunun sahibi tarafından sağlanmıştır; kaynakları ve lisansları doğrulanmamıştır. Yayınlamadan önce her modelin lisansını kontrol edin. Uçaklar ve yer araçları şimdilik kodla çizilen basit modellerdir.
+Terminal, kontrol kulesi, yolcu köprüsü, Embraer E170 bölgesel jet ve merdiven aracı modelleri ile hangar dokuları oyunun sahibi tarafından sağlanmıştır; kaynakları ve lisansları doğrulanmamıştır. Yayınlamadan önce her modelin lisansını kontrol edin.
+
+- **Bölgesel jet (E170):** Beyaz modelin kuyruğu havayolunun renginde boyanır, gövdeye havayolu adı ve şeridi çıkartma olarak işlenir.
+- **Merdiven aracı:** Köprüsüz park yerlerinde uçağın ön kapısına yanaşır; boyu uçağın kapı yüksekliğine göre ayarlanır.
+- **Yolcu köprüsü:** Uçağın kapı yüksekliğine göre eğilir.
+- Dar ve geniş gövdeli uçaklar, hangar ve diğer yer araçları şimdilik kodla çizilen basit modellerdir.

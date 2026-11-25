@@ -6,6 +6,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import terminalGlb from '../assets/terminal.glb';
 import towerGlb from '../assets/tower.glb';
 import jetwayGlb from '../assets/jetway.glb';
+import e170Glb from '../assets/e170.glb';
+import stairsGlb from '../assets/stairs.glb';
+import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
 import hangarWallUrl from '../assets/hangar_wall.jpg';
 import concreteUrl from '../assets/concrete.jpg';
 import { AIRCRAFT } from './config.js';
@@ -40,7 +43,9 @@ function loadTex(url, repeat = 1) {
 
 export async function loadAssets() {
   await MeshoptDecoder.ready;
-  const [terminal, tower, jetway] = await Promise.all([parseGlb(terminalGlb), parseGlb(towerGlb), parseGlb(jetwayGlb)]);
+  const [terminal, tower, jetway, e170, stairs] = await Promise.all([parseGlb(terminalGlb), parseGlb(towerGlb), parseGlb(jetwayGlb), parseGlb(e170Glb), parseGlb(stairsGlb)]);
+  A.e170 = shadows(e170, true, false);
+  A.stairs = shadows(stairs, true, false);
   terminal.traverse((m) => {
     if (m.isMesh) {
       m.material.flatShading = false;
@@ -340,18 +345,78 @@ function buildAircraftParts(type, airline) {
   };
 }
 
+// gönderilen modelle (E170): kuyruk havayolu renginde, gövdeye şerit ve ad çıkartması
+function buildModelLivery(type, airline) {
+  const fus = A.e170.getObjectByName('fuselage');
+  fus.updateMatrixWorld(true);
+  const fin = new THREE.MeshStandardMaterial({ color: airline.tail, roughness: 0.45, metalness: 0.1 });
+  const decalMat = (tex) => new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 0.45, metalness: 0.1, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  const canvasT = (w, h, draw) => {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  };
+  const name = canvasT(1024, 128, (x, w, h) => {
+    x.fillStyle = airline.stripe;
+    x.font = 'bold 92px system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    const txt = airline.name.toUpperCase();
+    const k = Math.min(1, (w * 0.96) / x.measureText(txt).width);
+    x.save();
+    x.translate(w / 2, h / 2);
+    x.scale(k, 1);
+    x.fillText(txt, 0, 4);
+    x.restore();
+  });
+  const stripe = canvasT(512, 32, (x, w, h) => {
+    x.fillStyle = airline.tail;
+    x.fillRect(0, 0, w, h * 0.62);
+    x.fillStyle = airline.stripe;
+    x.fillRect(0, h * 0.72, w, h * 0.28);
+  });
+  const nameMat = decalMat(name), stripeMat = decalMat(stripe);
+  const ray = new THREE.Raycaster();
+  const decals = [];
+  for (const side of [1, -1]) {
+    const hitAt = (y, z) => {
+      ray.set(new THREE.Vector3(side * 6, y, z), new THREE.Vector3(-side, 0, 0));
+      const h = ray.intersectObject(fus, false)[0];
+      return h ? h.point : new THREE.Vector3(side * 1.6, y, z);
+    };
+    const rot = new THREE.Euler(0, side * Math.PI / 2, 0);
+    const p1 = hitAt(4.2, -1.5);
+    decals.push([new DecalGeometry(fus, p1, rot, new THREE.Vector3(10.5, 1.3, 1.6)), nameMat]);
+    const p2 = hitAt(3.12, 0.8);
+    decals.push([new DecalGeometry(fus, p2, rot, new THREE.Vector3(25, 0.42, 1.6)), stripeMat]);
+  }
+  return { model: true, fin, decals };
+}
+
 export function makeAircraft(type, airline) {
+  const t = AIRCRAFT[type];
   const key = type + ':' + airline.id;
-  if (!acCache.has(key)) acCache.set(key, buildAircraftParts(type, airline));
+  if (!acCache.has(key)) acCache.set(key, t.model ? buildModelLivery(type, airline) : buildAircraftParts(type, airline));
   const P = acCache.get(key);
   const g = new THREE.Group();
-  for (const [geo, mat] of P.meshes) {
-    const m = new THREE.Mesh(geo, mat);
-    m.castShadow = true;
-    m.receiveShadow = false;
+  if (P.model) {
+    const m = A.e170.clone(true);
+    m.getObjectByName('fin').material = P.fin;
     g.add(m);
+    for (const [geo, mat] of P.decals) g.add(new THREE.Mesh(geo, mat));
+  } else {
+    for (const [geo, mat] of P.meshes) {
+      const m = new THREE.Mesh(geo, mat);
+      m.castShadow = true;
+      m.receiveShadow = false;
+      g.add(m);
+    }
   }
-  const t = AIRCRAFT[type];
   // seyir ışıkları ve çakar
   const lamp = (color, x, y, z, r = 0.35) => {
     const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), new THREE.MeshBasicMaterial({ color }));
@@ -360,11 +425,12 @@ export function makeAircraft(type, airline) {
     return m;
   };
   const yc = t.gearZ + t.dia / 2;
-  g.userData.beacon = lamp(0xff2020, 0, yc + t.dia / 2 + 0.25, 0, 0.3);
-  lamp(0xff3030, -t.span / 2, yc - t.dia * 0.15, t.span * 0.27);
-  lamp(0x30ff60, t.span / 2, yc - t.dia * 0.15, t.span * 0.27);
+  const L = t.lights || { wingY: yc - t.dia * 0.15, wingZ: t.span * 0.27, wingX: t.span / 2, top: yc + t.dia / 2 + 0.25, noseZ: -t.len * 0.39, noseY: t.gearZ + 0.9 };
+  g.userData.beacon = lamp(0xff2020, 0, L.top, 0, 0.3);
+  lamp(0xff3030, -L.wingX, L.wingY, L.wingZ, 0.3);
+  lamp(0x30ff60, L.wingX, L.wingY, L.wingZ, 0.3);
   // kalkış/iniş ışığı
-  g.userData.landing = lamp(0xfff6d0, 0, t.gearZ + 0.9, -t.len * 0.39, 0.25);
+  g.userData.landing = lamp(0xfff6d0, 0, L.noseY, L.noseZ, 0.25);
   return g;
 }
 
@@ -387,8 +453,15 @@ function wheels(g, xs, zs, r = 0.45) {
     g.add(m);
   }
 }
-export function makeVehicle(kind) {
+export function makeVehicle(kind, scale = 1) {
   const g = new THREE.Group();
+  if (kind === 'stairs' && A.stairs) {
+    // gönderilen merdiven aracı: platform önde (-z), kabinin üstünde; uçağın kapı yüksekliğine göre ölçeklenir
+    const m = A.stairs.clone(true);
+    m.scale.setScalar(scale);
+    g.add(m);
+    return g;
+  }
   if (kind === 'tug') {
     box(g, 2.8, 1.2, 6, 0xf2c200, 0, 1.0, 0);
     box(g, 2.2, 1.2, 1.6, 0x2b2f33, 0, 2.2, 1.8);

@@ -741,11 +741,13 @@ export class Sim {
     ];
     if (remote) {
       const lcorner = at(-t.len / 2 - 8, -(t.span / 2 + 6));
-      plan.push(['stairs', at(t.len / 2 - t.doorFromNose - 1, -(t.dia / 2 + 3.6)), sp.h - Math.PI / 2, 0, lcorner]);
+      // merdiven aracı kapıya yüzü dönük; platform yüksekliği kapı eşiğine göre
+      const sc = clamp(((t.sill || 3.3) + 0.15) / 4.2, 0.5, 1.15);
+      plan.push(['stairs', at(t.len / 2 - t.doorFromNose, -(t.dia / 2 + 0.25 + 3.3 * sc)), sp.h + Math.PI / 2, 0, lcorner, sc]);
       plan.push(['bus', at(t.len * 0.12, -(t.span / 2 + 2)), sp.h, 10, lcorner]);
     }
-    for (const [kind, pos, h, delay, via] of plan) {
-      const v = this.addVehicle(kind, spawn, [via || corner, pos], h, delay);
+    for (const [kind, pos, h, delay, via, sc] of plan) {
+      const v = this.addVehicle(kind, spawn, [via || corner, pos], h, delay, sc);
       ac.vehicles.push(v);
     }
     ac.servicesLeaving = false;
@@ -765,8 +767,8 @@ export class Sim {
     }
   }
 
-  addVehicle(kind, from, route, finalH, delay = 0) {
-    const mesh = makeVehicle(kind);
+  addVehicle(kind, from, route, finalH, delay = 0, scale = 1) {
+    const mesh = makeVehicle(kind, scale);
     this.group.add(mesh);
     const v = { kind, mesh, x: from.x, z: from.z, h: headingOf(route[0].x - from.x, route[0].z - from.z), route, ri: 0, finalH, delay, via: route[0], speed: kind === 'bus' ? 9 : 8, done: false };
     mesh.visible = delay <= 0;

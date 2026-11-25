@@ -591,10 +591,13 @@ export class World {
     const dist = Math.hypot(dx, dz);
     const h = headingOf(dx, dz);
     J.root.rotation.y = Math.PI / 2 - h;
-    // uzunluk: rotunda ekseni -> kabin kapısı (model: 29,5 m)
-    const sc = clamp((dist - 8.35) / J.lenBase, 0.35, 1.9);
-    J.tunnel.scale.x = sc;
-    J.cab.position.x = J.tunBase + J.lenBase * sc;
+    // uzunluk: rotunda ekseni -> kabin kapısı (model: 29,5 m). Kabin tabanı 3,27 m; kapı eşiğine göre tünel eğilir
+    const Lh = clamp(dist - 8.35, J.lenBase * 0.35, J.lenBase * 1.9);
+    const dy = 3.27 - (t.sill || 3.3);
+    J.tunnel.scale.x = Math.hypot(Lh, dy) / J.lenBase;
+    J.tunnel.rotation.z = -Math.atan2(dy, Lh);
+    J.cab.position.x = J.tunBase + Lh;
+    J.cab.position.y = -dy;
     // kabin gövdeye dik dönsün
     const cabH = headingOf(-F.l.x, -F.l.z);
     J.cab.rotation.y = h - cabH;

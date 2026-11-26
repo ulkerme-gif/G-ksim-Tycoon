@@ -7,6 +7,8 @@ import { CameraRig } from './camera.js';
 import { Builder } from './build.js';
 import { Sim } from './sim.js';
 import { Economy } from './economy.js';
+import { Progress } from './progress.js';
+import { Rain } from './weather.js';
 import { UI } from './ui.js';
 import { loadAssets } from './assets.js';
 import { clamp, lerp, money } from './util.js';
@@ -51,6 +53,8 @@ class Game {
     await loadAssets();
     this.world = new World(this.scene);
     this.econ = new Economy(this);
+    this.prog = new Progress(this);
+    this.rain = new Rain(this.scene);
     this.sim = new Sim(this);
     this.builder = new Builder(this);
     this.ui = new UI(this);
@@ -164,12 +168,12 @@ class Game {
         if (Math.floor(this.time / 60) !== hourBefore) this.save(false);
       }
     }
-    this.lighting();
+    this.lighting(dt);
     this.ui.update(dt);
     this.renderer.render(this.scene, this.camera);
   }
 
-  lighting() {
+  lighting(dt = 0) {
     const m = this.time % 1440;
     // gün doğumu 06:00, batımı 20:00
     const k = (m - 360) / 840;
@@ -197,8 +201,30 @@ class Game {
     this.hemi.intensity = lerp(0.3, 0.95, day);
     this.scene.environmentIntensity = lerp(0.03, 0.16, day);
     this.sky.setRGB(lerp(0.05, 0.6, day) + warm * 0.12 * day, lerp(0.08, 0.76, day), lerp(0.17, 0.9, day));
-    this.scene.fog.color.copy(this.sky);
     this.renderer.toneMappingExposure = lerp(1.25, 1.0, day);
+    // hava: sis ve fırtına
+    const P = this.prog;
+    const fog = P ? P.fogAt(this.time) : 0;
+    const storm = P ? P.stormAt(this.time) : 0;
+    const F = this.scene.fog;
+    F.near = lerp(lerp(5000, 40, fog), 900, storm * 0.85);
+    F.far = lerp(lerp(16000, 1500, fog), 5000, storm * 0.85);
+    if (fog || storm) {
+      const gy = lerp(0.06, 0.62, day);
+      this.sky.lerp(new THREE.Color(gy, gy * 1.02, gy * 1.06), Math.max(fog * 0.9, storm * 0.9));
+      this.sky.multiplyScalar(1 - 0.5 * storm);
+      this.sun.intensity *= (1 - 0.8 * fog) * (1 - 0.85 * storm);
+      this.hemi.intensity *= (1 - 0.45 * storm) * (1 - 0.1 * fog);
+      this.scene.environmentIntensity *= 1 - 0.6 * storm;
+      this.renderer.toneMappingExposure *= (1 - 0.28 * storm) * (1 - 0.06 * fog);
+    }
+    const R = this.rig;
+    const flash = this.rain.update(dt * Math.min(this.speed || 0.3, 2), storm, R.target, clamp(R.dist / 600, 0.4, 4));
+    if (flash) {
+      this.hemi.intensity += flash * 2.2;
+      this.renderer.toneMappingExposure += flash * 0.35;
+    }
+    F.color.copy(this.sky);
   }
 
   // ---------------------------------------------------------------- kayıt
@@ -229,7 +255,7 @@ class Game {
     const flights = this.sim.flights.filter((f) => f.status === 'planned' && f.arr > this.time).map((f) => ({ ...f }));
     const R = this.rig;
     const cam = { x: Math.round(R.target.x), z: Math.round(R.target.z), dist: Math.round(R.dist), yaw: +R.yaw.toFixed(3), pitch: +R.pitch.toFixed(3) };
-    return { v: 1, time: this.time, speed: this.lastSpeed, ground: runs, objects, standNum: W.standNum, econ: this.econ.toJSON(), flights, lastDay: this.econ.lastDay, cam };
+    return { v: 1, time: this.time, speed: this.lastSpeed, ground: runs, objects, standNum: W.standNum, econ: this.econ.toJSON(), progress: this.prog.toJSON(), flights, lastDay: this.econ.lastDay, cam };
   }
 
   // ---------------------------------------------------------------- kayıt dosyası (indir / yükle)
@@ -336,6 +362,9 @@ class Game {
     this.econ.lastDay = s.lastDay || this.day();
     this.sim.flights = s.flights || [];
     this.lastSpeed = s.speed || 1;
+    this.prog = new Progress(this);
+    this.prog.fromJSON(s.progress);
+    this.ui.resetDots();
     if (s.cam) {
       const R = this.rig;
       R.follow = null;
@@ -363,12 +392,15 @@ class Game {
   newGame(starter) {
     this.resetWorld();
     this.econ = new Economy(this);
+    this.prog = new Progress(this);
+    this.ui.resetDots();
     this.sim.flights = [];
     this.time = 8 * 60;
     this.econ.lastDay = 1;
     this.econ.genOffers();
     this.econ.newWind();
     if (starter) this.buildStarter();
+    this.prog.startDay(1, true);
     this.rig.target.set(0, 0, starter ? -120 : 0);
     this.rig.dist = starter ? 700 : 1100;
     this.save(false);

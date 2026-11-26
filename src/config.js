@@ -98,6 +98,21 @@ export const AIRLINES = [
   { id: 'HT', name: 'Hitit Hava Yolları', code: 'HH', tail: '#c92a2a', stripe: '#6e1414', type: 'wide', minStars: 3.5, perDay: [2, 3], load: 0.88, needsHangar: true },
   { id: 'KD', name: 'Karadeniz Jet', code: 'KJ', tail: '#364fc7', stripe: '#1b2a6b', type: 'narrow', minStars: 3, perDay: [6, 8], load: 0.86 },
   { id: 'TV', name: 'Truva Air', code: 'TV', tail: '#f08c00', stripe: '#7a4600', type: 'wide', minStars: 4, perDay: [2, 4], load: 0.9, needsHangar: true },
+  // seviye ile açılanlar
+  { id: 'MJ', name: 'Marmara Jet', code: 'MJ', tail: '#0b7285', stripe: '#063f4a', type: 'narrow', minStars: 3, minLevel: 4, perDay: [6, 9], load: 0.87 },
+  { id: 'AK', name: 'Akdeniz Kanatları', code: 'AK', tail: '#fab005', stripe: '#a35f00', type: 'narrow', minStars: 3.5, minLevel: 5, perDay: [7, 10], load: 0.9 },
+  { id: 'AV', name: 'Avrasya Airlines', code: 'AV', tail: '#212529', stripe: '#c9a227', type: 'wide', minStars: 4, minLevel: 6, perDay: [3, 5], load: 0.88, needsHangar: true },
+  { id: 'IY', name: 'İpek Yolu Hava', code: 'IY', tail: '#a61e4d', stripe: '#5c0f29', type: 'wide', minStars: 4, minLevel: 7, perDay: [4, 6], load: 0.9, needsHangar: true },
+  { id: 'KY', name: 'Kuzey Yıldızı', code: 'KY', tail: '#74c0fc', stripe: '#1c5d99', type: 'narrow', minStars: 4.5, minLevel: 8, perDay: [9, 12], load: 0.9 },
+  { id: 'AN', name: 'Anka Airways', code: 'AN', tail: '#862e9c', stripe: '#4a1356', type: 'wide', minStars: 4.5, minLevel: 9, perDay: [5, 7], load: 0.92, needsHangar: true },
+];
+
+// tek seferlik charter uçuşları yapan tur şirketleri (kurgusal)
+export const CHARTERS = [
+  { id: 'CG', name: 'Güneş Tur Charter', code: 'GT', tail: '#ff922b', stripe: '#c2410c', type: 'narrow', load: 0.97, charter: true },
+  { id: 'CM', name: 'Mavi Yolculuk', code: 'MY', tail: '#4dabf7', stripe: '#1864ab', type: 'narrow', load: 0.96, charter: true },
+  { id: 'CK', name: 'Kardelen Tur', code: 'KT', tail: '#f1f3f5', stripe: '#c92a2a', type: 'wide', load: 0.95, charter: true },
+  { id: 'CR', name: 'Rota Bölgesel Tur', code: 'RT', tail: '#94d82d', stripe: '#2b8a3e', type: 'regional', load: 0.95, charter: true },
 ];
 
 export const CITIES = ['Londra', 'Berlin', 'Paris', 'Roma', 'Madrid', 'Viyana', 'Atina', 'Bakü', 'Tiflis', 'Dubai', 'Doha', 'Kahire', 'Amsterdam', 'Münih', 'Zürih',

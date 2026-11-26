@@ -1,9 +1,13 @@
 // Arayüz: üst çubuk, inşaat araçları, paneller, bildirimler, seçim kartı
 import { TOOLS } from './build.js';
 import { RUNWAYS, AIRCRAFT, STANDS, BUILDINGS, COSTS, AIRLINES } from './config.js';
-import { money, moneyShort, hhmm, esc, num } from './util.js';
+import { money, moneyShort, hhmm, esc, num, clamp } from './util.js';
 import { STATUS } from './sim.js';
 import { INCOME_NAMES, EXPENSE_NAMES } from './economy.js';
+import { levelInfo, UPGRADES, RIVAL_COUNT } from './progress.js';
+
+// ilerlemesi sayı olarak gösterilen başarımlar
+const ACH_NUM = new Set(['f100', 'f1k', 'f5k', 'p10k', 'p100k', 'p1m', 'p10m', 'jw10', 'busy15', 'bigday', 'charter5', 'expand5', 'streak7', 'con8', 'wide3', 'term4', 'sat95']);
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -46,6 +50,7 @@ export class UI {
       if (b) this.openPanel(this.panel === b.dataset.panel ? null : b.dataset.panel);
     });
     $('#panel-close').addEventListener('click', () => this.openPanel(null));
+    $('#lvl').addEventListener('click', () => this.openPanel(this.panel === 'goals' ? null : 'goals'));
     $('#opts').addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -205,6 +210,16 @@ export class UI {
       </table><div class="row"><button class="btn" data-m="close">Tamam</button></div>`);
   }
 
+  // ---------------------------------------------------------------- sekme noktaları (yeni bir şey var)
+  dot(name) {
+    if (this.panel === name) return;
+    const b = $(`#tabs [data-panel="${name}"]`);
+    if (b) b.classList.add('dot');
+  }
+  resetDots() {
+    document.querySelectorAll('#tabs .dot').forEach((b) => b.classList.remove('dot'));
+  }
+
   // ---------------------------------------------------------------- paneller
   openPanel(name) {
     this.panel = name;
@@ -212,7 +227,9 @@ export class UI {
     $('#panel').hidden = !name;
     this.lastPanelHtml = null;
     if (name) {
-      $('#panel-title').textContent = { flights: 'Uçuşlar', airlines: 'Havayolları', finance: 'Finans', guide: 'Başlangıç rehberi' }[name];
+      const b = $(`#tabs [data-panel="${name}"]`);
+      if (b) b.classList.remove('dot');
+      $('#panel-title').textContent = { flights: 'Uçuşlar', airlines: 'Havayolları', finance: 'Finans', guide: 'Başlangıç rehberi', goals: 'Hedefler', upgrades: 'Yükseltmeler' }[name];
       this.renderPanel();
     }
   }
@@ -237,17 +254,45 @@ export class UI {
     const row = (f) => {
       const a = g.econ.airline(f.airline);
       const st = f.status === 'turnaround' || f.status === 'boarding' ? `${STATUS[f.status]} · ${f.stand}` : STATUS[f.status];
-      const late = f.delay >= 8 ? `<em>+${Math.round(f.delay)} dk</em>` : '';
+      const late = (f.delay >= 8 ? `<em>+${Math.round(f.delay)} dk</em>` : '') + (f.wx && f.status === 'holding' ? '<em>fırtına</em>' : '');
       const dd = Math.floor(f.arr / 1440) + 1 - g.day();
-      return `<tr class="st-${f.status}"><td>${hhmm(f.arr)}${dd > 0 ? '<sup>+1</sup>' : ''}</td><td><i style="background:${a.tail}"></i>${esc(f.code)}</td><td>${esc(f.from)}</td><td>${AIRCRAFT[f.type].name}</td><td>${st}${late}</td></tr>`;
+      return `<tr class="st-${f.status}"><td>${hhmm(f.arr)}${dd > 0 ? '<sup>+1</sup>' : ''}</td><td><i style="background:${a.tail}"></i>${esc(f.code)}${f.charter ? '<sup>charter</sup>' : ''}</td><td>${esc(f.from)}</td><td>${AIRCRAFT[f.type].name}</td><td>${st}${late}</td></tr>`;
     };
     return `<table class="board"><thead><tr><th>Saat</th><th>Uçuş</th><th>Nereden</th><th>Tip</th><th>Durum</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`;
+  }
+
+  render_special() {
+    const g = this.game;
+    const E = g.econ, P = g.prog;
+    if (!P.special.length) return '';
+    let h = '<h3>Özel teklifler</h3>';
+    for (const s of P.special) {
+      const a = E.airline(s.airline);
+      if (s.kind === 'charter') {
+        const req = E.requirements(a);
+        const ok = req.every((r) => r.ok);
+        h += `<div class="card sp"><div class="ch"><i style="background:${a.tail}"></i><b>${esc(a.name)}</b><span>Charter · ${AIRCRAFT[s.type].name}</span></div>
+          <p class="est">${esc(s.city)} · iniş ${hhmm(s.arr)} · ek ödeme <b>${money(s.bonus)}</b></p>
+          <p class="muted">Tek seferlik uçuş. 25 dakikadan fazla gecikirse ödemenin yarısı alınır. Son kabul saati: ${hhmm(s.expires)}.</p>
+          <ul class="req">${req.map((r) => `<li class="${r.ok ? 'ok' : 'no'}">${esc(r.text)}</li>`).join('')}</ul>
+          <div class="row"><button class="btn ${ok ? 'primary' : ''}" data-sp-ok="${s.id}" ${ok ? '' : 'disabled'}>Kabul et</button><button class="btn" data-sp-no="${s.id}">Reddet</button></div></div>`;
+      } else {
+        const c = E.contracts.find((x) => x.id === s.contract);
+        if (!c) continue;
+        h += `<div class="card sp"><div class="ch"><i style="background:${a.tail}"></i><b>${esc(a.name)}</b><span>Genişleme talebi</span></div>
+          <p class="est">Günde ${c.perDay} → <b>${c.perDay + s.add}</b> sefer · tahmini ek gelir <b>${money(E.estimate(a, s.add))}</b> / gün</p>
+          <p class="muted">İmza ödemesi ${money(s.bonus)}. Daha çok uçak için park yeri ve pist kapasitesi gerekir. Teklif gün sonuna kadar geçerli.</p>
+          <div class="row"><button class="btn primary" data-sp-ok="${s.id}">Kabul et</button><button class="btn" data-sp-no="${s.id}">Reddet</button></div></div>`;
+      }
+    }
+    return h;
   }
 
   render_airlines() {
     const E = this.game.econ;
     const stars = E.rating();
-    let h = '<h3>Anlaşmalar</h3>';
+    const lvl = this.game.prog.level;
+    let h = this.render_special() + '<h3>Anlaşmalar</h3>';
     if (!E.contracts.length) h += '<p class="muted">Henüz anlaşma yok.</p>';
     for (const c of E.contracts) {
       const a = E.airline(c.airline);
@@ -266,8 +311,8 @@ export class UI {
         <ul class="req">${req.map((r) => `<li class="${r.ok ? 'ok' : 'no'}">${esc(r.text)}</li>`).join('')}</ul>
         <button class="btn ${ok ? 'primary' : ''}" data-accept="${o.id}" ${ok ? '' : 'disabled'}>Anlaşmayı imzala</button></div>`;
     }
-    const locked = AIRLINES.filter((a) => a.minStars > stars && !E.offers.some((o) => o.airline === a.id) && !E.contracts.some((c) => c.airline === a.id));
-    if (locked.length) h += `<p class="muted">Puanınız yükseldikçe ${locked.length} havayolu daha teklif verecek.</p>`;
+    const locked = AIRLINES.filter((a) => (a.minStars > stars || (a.minLevel || 0) > lvl) && !E.offers.some((o) => o.airline === a.id) && !E.contracts.some((c) => c.airline === a.id));
+    if (locked.length) h += `<p class="muted">Puanınız ve seviyeniz yükseldikçe ${locked.length} havayolu daha teklif verecek.</p>`;
     return h;
   }
 
@@ -291,6 +336,80 @@ export class UI {
     return h;
   }
 
+  render_goals() {
+    const g = this.game;
+    const P = g.prog, E = g.econ;
+    const L = P.level, cur = levelInfo(L), nx = levelInfo(L + 1);
+    const pct = clamp((E.totals.pax - cur.pax) / (nx.pax - cur.pax), 0, 1);
+    const un = P.unlocksFor(L + 1);
+    const bar = (v, n, col = 'var(--accent)') => `<div class="bar"><div style="width:${clamp(v / n, 0, 1) * 100}%;background:${col}"></div></div>`;
+    let h = `<div class="card lvcard"><div class="ch"><span class="lv-n big">${L}</span><b>${esc(cur.name)}</b>${P.incomeMul() > 1 ? `<span>Efsane bonusu: gelir +%${Math.round((P.incomeMul() - 1) * 100)}</span>` : ''}</div>
+      ${bar(pct, 1)}
+      <div class="cf"><span>${num(E.totals.pax)} / ${num(nx.pax)} yolcu</span><span>Sonraki: ${esc(nx.name)}</span></div>
+      <p class="muted">Seviye ${L + 1} ödülü <b>${money(nx.reward)}</b>${un.length ? '<br>' + un.map(esc).join('<br>') : ''}</p></div>`;
+    // günlük görevler
+    const ch = P.ch;
+    h += `<h3>Günlük görevler${P.streak ? `<span class="pill">Seri ${P.streak} gün · ödüller +%${Math.min(P.streak, 10) * 10}</span>` : ''}</h3>`;
+    if (!ch || !ch.list.length) h += '<p class="muted">Görevler, bugün en az 3 uçuş planlandığında başlar. Havayolları sekmesinden anlaşma imzalayın.</p>';
+    else {
+      for (const c of ch.list) {
+        const pr = P.chProgress(c);
+        const right = c.state === 'done' ? `✓ ${moneyShort(c.paid || c.reward)}` : c.state === 'fail' ? 'Kaçtı' : moneyShort(c.reward * P.streakMul());
+        const fails = c.type === 'nodivert' || c.type === 'nogo';
+        h += `<div class="card chal ${c.state}"><div class="ch"><b>${esc(P.chText(c))}</b><span>${right}</span></div>
+          ${c.type === 'profit' ? '<p class="muted" style="margin:6px 0 0">Gün sonunda değerlendirilir.</p>' : `${bar(pr[0], pr[1], c.state === 'done' ? 'var(--good)' : 'var(--accent)')}<div class="cf"><span>${fails ? `${num(pr[0])} / ${num(pr[1])} kalkış, gün sonuna kadar` : `${num(Math.min(pr[0], pr[1]))} / ${num(pr[1])}`}</span></div>`}</div>`;
+      }
+      h += `<p class="muted">${ch.allPaid ? 'Bugünün tüm görevleri tamam. Yarın yenileri gelir.' : 'Üçü de tamamlanırsa ödüllerin yarısı kadar bonus alır, seriyi uzatırsınız. Seri her gün ödülleri %10 artırır (en çok %100).'}</p>`;
+    }
+    // sıralama
+    const B = P.board();
+    const me = B.find((r) => r.me);
+    const show = B.filter((r) => r.rank <= 3 || Math.abs(r.rank - me.rank) <= 2);
+    h += `<h3>Haftalık yolcu sıralaması</h3><table class="board rank"><tbody>`;
+    let prev = 0;
+    for (const r of show) {
+      if (r.rank - prev > 1) h += '<tr class="gap"><td colspan="3">⋯</td></tr>';
+      prev = r.rank;
+      h += `<tr class="${r.me ? 'me' : ''}"><td>#${r.rank}</td><td>${esc(r.name)}</td><td>${num(r.pax)}</td></tr>`;
+    }
+    if (prev < B.length) h += '<tr class="gap"><td colspan="3">⋯</td></tr>';
+    const above = B[me.rank - 2];
+    h += `</tbody></table><p class="muted">Son 7 günün yolcusu. Rakipler de her gün büyür.${above ? ` Bir üst sıra için ${num(above.pax - me.pax + 1)} yolcu daha.` : ' Zirvedesiniz!'} En iyi sıranız #${P.bestRank > RIVAL_COUNT ? '–' : P.bestRank}. Her yeni sıra para ödülü getirir.</p>`;
+    // başarımlar
+    const A = P.achList();
+    const done = A.filter((a) => a.done).length;
+    A.sort((a, b) => a.done - b.done || (b.max ? b.cur / b.max : 0) - (a.max ? a.cur / a.max : 0));
+    h += `<h3>Başarımlar ${done}/${A.length}</h3><div class="achs">`;
+    for (const a of A) {
+      const p = !a.done && a.max ? bar(a.cur, a.max) : '';
+      const rew = a.reward ? moneyShort(a.reward) : 'Unvan';
+      const cnt = !a.done && ACH_NUM.has(a.id) ? `${num(Math.min(a.cur, a.max))} / ${num(a.max)} · ` : '';
+      h += `<div class="ach ${a.done ? 'ok' : ''}"><b>${esc(a.name)}</b><span>${esc(a.desc)}</span>${p}<small>${a.done ? 'Kazanıldı · ' : cnt}${rew}</small></div>`;
+    }
+    return h + '</div>';
+  }
+
+  render_upgrades() {
+    const g = this.game;
+    const P = g.prog, E = g.econ;
+    let h = '<p class="muted">Yükseltmeler kalıcıdır. Yeni kademeler seviye atladıkça açılır.</p>';
+    for (const u of UPGRADES) {
+      const n = P.up(u.id);
+      const nx = P.upCost(u);
+      const pips = u.levels.map((_, k) => (k < n ? '●' : '○')).join('');
+      let btn = '<p class="okc">Son kademe</p>';
+      if (nx) {
+        const lvOk = P.level >= nx.lvl;
+        const ok = lvOk && E.money >= nx.cost;
+        btn = `<button class="btn ${ok ? 'primary' : ''}" data-up="${u.id}" ${ok ? '' : 'disabled'}>${lvOk ? `Yükselt · ${money(nx.cost)}` : `Seviye ${nx.lvl} gerekli · ${moneyShort(nx.cost)}`}</button>`;
+      }
+      h += `<div class="card up"><div class="ch"><b>${esc(u.name)}</b><span>${pips}</span></div>
+        <p class="muted">${esc(u.desc)}</p>
+        <p class="eff">${esc(u.eff(n))}${nx ? ` → <b>${esc(u.eff(n + 1))}</b>` : ''}</p>${btn}</div>`;
+    }
+    return h;
+  }
+
   render_guide() {
     const g = this.game;
     const W = g.world, E = g.econ;
@@ -304,6 +423,7 @@ export class UI {
       [stands.some((s) => s.jetway), 'Bir yolcu köprüsü ekleyin', 'Köprülü park yerleri havayollarını daha mutlu eder.'],
       [E.contracts.length > 0, 'Bir havayoluyla anlaşın', 'Havayolları sekmesinden teklifleri inceleyin.'],
       [E.totals.flights > 0, 'İlk kalkışı izleyin', 'Hızı artırmak için üstteki 2× ve 4× düğmeleri.'],
+      [g.prog.level >= 2, 'Hedefler sekmesine bakın', 'Günlük görevler, başarımlar ve rakip sıralaması. 2.000 yolcuda seviye atlarsınız.'],
     ];
     return `<ol class="guide">${steps.map(([ok, t, d]) => `<li class="${ok ? 'ok' : ''}"><b>${t}</b><span>${d}</span></li>`).join('')}</ol>
       <p class="muted">İpucu: pistin iki ucuna yakın taksi yolu bağlantıları kalkışları hızlandırır; yoksa uçaklar pistte geri taksi yapar ve iniş yapacak uçaklar pas geçebilir.</p>`;
@@ -315,6 +435,18 @@ export class UI {
     const E = this.game.econ;
     if (b.dataset.accept) {
       E.accept(+b.dataset.accept);
+      this.renderPanel();
+    }
+    if (b.dataset.up) {
+      this.game.prog.buyUp(b.dataset.up);
+      this.renderPanel();
+    }
+    if (b.dataset.spOk) {
+      this.game.prog.acceptSpecial(+b.dataset.spOk);
+      this.renderPanel();
+    }
+    if (b.dataset.spNo) {
+      this.game.prog.declineSpecial(+b.dataset.spNo);
       this.renderPanel();
     }
     if (b.dataset.cancel) {
@@ -395,6 +527,24 @@ export class UI {
     const r = E.rating();
     $('#stars').innerHTML = [1, 2, 3, 4, 5].map((k) => `<span class="${r >= k ? 'f' : r >= k - 0.5 ? 'h' : ''}">★</span>`).join('');
     $('#stars').title = `Havalimanı puanı: ${String(r).replace('.', ',')}`;
+    const P = g.prog;
+    P.tick(0.25);
+    const L = P.level, cur = levelInfo(L), nx = levelInfo(L + 1);
+    $('#lvl-n').textContent = L;
+    $('#lvl-name').textContent = cur.name;
+    $('#lvl-bar').style.width = `${clamp((E.totals.pax - cur.pax) / (nx.pax - cur.pax), 0, 1) * 100}%`;
+    const rk = P.rank();
+    $('#rank').textContent = `#${rk}`;
+    $('#lvl').title = `Seviye ${L} · ${cur.name} · ${num(E.totals.pax)} / ${num(nx.pax)} yolcu · haftalık sıralama #${rk}`;
+    const w = P.wx, wx = $('#wx');
+    const tm = g.time;
+    let wt = '';
+    if (w.kind === 'fog' && tm < w.to) wt = tm >= w.from ? `🌫 Sis<span> · bitiş ${hhmm(w.to)}</span>` : `🌫<span> Sis ${hhmm(w.from)}</span>`;
+    if (w.kind === 'storm' && tm < w.to) wt = tm >= w.from ? `⛈ Fırtına<span> · bitiş ${hhmm(w.to)}</span>` : `⛈<span> Fırtına ${hhmm(w.from)}–${hhmm(w.to)}</span>`;
+    if (w.kind === 'rush') wt = '🎉<span> Bayram yoğunluğu</span>';
+    wx.hidden = !wt;
+    if (wt && wx.innerHTML !== wt) wx.innerHTML = wt;
+    wx.className = w.kind;
     const rw = g.world.list('runway')[0];
     $('#wind').textContent = `Rüzgâr ${String(E.wind.from).padStart(3, '0')}° ${E.wind.kt} kt` + (rw ? ` · Pist ${g.world.runwayInfo(rw).ends[rw.active || 0].name}` : '');
     document.querySelectorAll('#speed [data-speed]').forEach((b) => b.classList.toggle('on', +b.dataset.speed === g.speed));

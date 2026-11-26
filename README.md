@@ -39,9 +39,22 @@ Yakınlaştırırken parmakların ya da imlecin altındaki nokta yerinde kalır.
 - **Park yeri** kurarken ok, uçağın burnunun bakacağı yönü gösterir. Park yerinin arkasındaki kare taksi yoluna ya da aprona bağlı olmalı.
 - **Pist çıkışları**: pistin kenarına değen her taksi yolu karesi bir çıkıştır. İnen uçak, durabileceği ilk uygun çıkışı kullanır. Pistin iki ucuna yakın bağlantılar kalkışları hızlandırır; yoksa uçaklar pistte geri taksi yapar, pist uzun süre dolu kalır ve iniş yapacak uçaklar pas geçebilir.
 - **Yolcu köprüsü**: ön kenarı terminale bitişik (en fazla bir kare boşluk) park yerlerine kurulur. Köprüsüz park yerlerinde yolcular otobüs ve merdivenle iner, havayolları daha az memnun olur.
-- **Havayolları** her gün yeni teklif verir. Gecikmeler, pas geçmeler ve başka havalimanına yönlendirmeler memnuniyeti düşürür. Memnuniyet %20'nin altına inerse havayolu anlaşmayı bitirir.
+- **Havayolları** her gün yeni teklif verir. Gecikmeler, pas geçmeler ve başka havalimanına yönlendirmeler memnuniyeti düşürür. Memnuniyet %15'in altına inerse havayolu anlaşmayı bitirir.
 - **Puan** (yıldız) memnuniyet, deneyim ve tesislerle artar. Yüksek puan daha büyük havayollarının kilidini açar. Geniş gövdeli uçak işleten havayolları uzun pist, geniş park yeri ve hangar ister.
 - **Gece yarısı** bakım ve personel giderleri ödenir. Finans panelinde günlük gelir ve giderleri görebilirsiniz.
+
+## Hedefler ve ilerleme
+
+5 yıldıza ulaştıktan sonra da oyun devam eder. Üst çubuktaki seviye rozetine ya da **Hedefler** sekmesine dokunun.
+
+- **Seviye**: toplam yolcu sayısıyla yükselir (2.000, 10.000, 30.000 … 1,6 milyon). Her seviye para ödülü verir; yeni havayolları (Marmara Jet, Akdeniz Kanatları, Avrasya Airlines, İpek Yolu Hava, Kuzey Yıldızı, Anka Airways), yükseltme kademeleri, fırtınalı günler ve charter teklifleri seviyeyle açılır. 10. seviyeden sonra sınırsız **Efsane** seviyeleri gelir; her biri ödül ve kalıcı +%2 gelir verir (en çok +%60).
+- **Günlük görevler**: her gün üç görev (kalkış, yolcu, dakiklik, köprü kullanımı, geniş gövde, hiç yönlendirme ya da pas geçme olmaması, gün sonu kârı). Üçü de biterse ödüllerin yarısı kadar bonus ve **seri**; seri her gün görev ödüllerini %10 artırır (en çok %100). Bir gün kaçarsa seri sıfırlanır.
+- **Başarımlar**: 28 kalıcı hedef, çoğu para ödüllü.
+- **Sıralama**: son 7 günün yolcusuyla 12 kurgusal rakip havalimanıyla yarışırsınız. Rakipler de her gün büyür. Her yeni en iyi sıra ödül getirir.
+- **Yükseltmeler** (Yükseltme sekmesi): yer hizmetleri (kapıda daha kısa kalış), çarşı ve duty free, pazarlama (daha çok teklif, daha dolu uçaklar), otopark ve raylı bağlantı, yakıt çiftliği, CIP salonları, radar ve yaklaşma kontrolü (daha sık iniş), ILS (siste iniş).
+- **Hava ve olaylar**: sabah sisi inişleri seyreltir (ILS ile azalır). Fırtınada iniş ve kalkış durur; hava kaynaklı gecikme havayolu memnuniyetini düşürmez. Bayram yoğunluğunda uçaklar daha dolu, satışlar yüksek.
+- **Özel teklifler** (Havayolları sekmesi): charter uçuşları tek seferlik ek ödeme getirir; çok memnun havayolları sefer eklemek ister (genişleme talebi, imza ödemesiyle).
+- Eski kayıtlar açıldığında seviye ve başarımlar ödül verilmeden işlenir.
 
 ## Geliştirme
 
@@ -60,6 +73,8 @@ Bu komut Three.js'i, kodu ve modelleri tek bir `index.html` dosyasına paketler.
 | `src/world.js` | Harita, zemin, pist, taksi yolu, apron, park yeri ve köprü çizimi |
 | `src/sim.js` | Uçuşlar: yaklaşma, iniş, taksi, park, yer hizmetleri, pushback, kalkış |
 | `src/economy.js` | Para, anlaşmalar, tarife, memnuniyet, puan |
+| `src/progress.js` | Seviyeler, günlük görevler, başarımlar, sıralama, yükseltmeler, hava olayları, özel teklifler |
+| `src/weather.js` | Yağmur ve şimşek görseli |
 | `src/build.js` | İnşaat araçları |
 | `src/ui.js` | Arayüz |
 | `src/assets.js` | Model yükleme ve kodla çizilen uçaklar, araçlar, hangar |

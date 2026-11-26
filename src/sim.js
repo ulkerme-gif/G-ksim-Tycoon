@@ -114,10 +114,31 @@ export class Sim {
   // her karede: zamanı gelen uçuşları başlat
   spawnDue(now) {
     const leadMin = ((APP_DIST + AIM) / 69) * (TIME_SCALE / 60);
+    const P = this.game.prog;
+    const storm = P && P.storm(now);
     for (const f of this.flights) {
       if (f.status !== 'planned' && f.status !== 'holding') continue;
       if (now < f.arr - leadMin) continue;
       const econ = this.game.econ;
+      // fırtına: uçuşlar havada/kalkış noktasında bekler; gecikme havayoluna yazılmaz
+      if (storm) {
+        if (!f.wx) {
+          f.wx = true;
+          f.wxSince = now;
+          f.status = 'holding';
+          f.holdSince = now;
+          f.seq = true;
+        } else if (now - f.wxSince > 150) {
+          this.addDelay(f, 'weather', now - f.wxSince);
+          this.divert(f, 'fırtına');
+        }
+        continue;
+      }
+      if (f.wx && f.status === 'holding') {
+        this.addDelay(f, 'weather', now - f.wxSince);
+        f.wx = false;
+        f.holdSince = now;
+      }
       if (!this.world.list('tower').length || !this.world.list('terminal').length) {
         this.divert(f, !this.world.list('tower').length ? 'kontrol kulesi yok' : 'terminal yok');
         continue;
@@ -140,7 +161,8 @@ export class Sim {
       }
       // sıralama: aynı piste yaklaşan uçaklarla en az 55 sn ara
       const eta = (APP_DIST + AIM) / 69;
-      const clash = this.ac.some((o) => o.rwy === rwy && (o.phase === 'approach' || o.phase === 'goaround') && Math.abs((o.phase === 'goaround' ? 200 : (AIM - this.sAlong(o.end, o.x, o.z)) / Math.max(40, o.v)) - eta) < 55)
+      const sep = P ? P.arrSep(now) : 55;
+      const clash = this.ac.some((o) => o.rwy === rwy && (o.phase === 'approach' || o.phase === 'goaround') && Math.abs((o.phase === 'goaround' ? 200 : (AIM - this.sAlong(o.end, o.x, o.z)) / Math.max(40, o.v)) - eta) < sep)
         // uzun süredir kalkış sırası bekleyen varsa önce o kalksın
         || this.ac.some((o) => o.rwy === rwy && o.phase === 'holding_short' && now - o.holdSince > 15);
       if (clash) {
@@ -397,6 +419,7 @@ export class Sim {
     ac.phase = 'goaround';
     ac.flight.status = 'goaround';
     ac.flight.goArounds = (ac.flight.goArounds || 0) + 1;
+    this.game.econ.today.goarounds++;
     this.game.econ.notify(`${ac.flight.code} pas geçti: pist dolu`, 'warn');
     const end = ac.end;
     const d = dirOf(end.h);
@@ -697,7 +720,7 @@ export class Sim {
     ac.beacon = false;
     ac.turnDone = 0;
     const remote = !ac.stand.jetway;
-    ac.turnTotal = ac.t.turnMin + (remote ? 10 : 0);
+    ac.turnTotal = (ac.t.turnMin + (remote ? 10 : 0)) * (this.game.prog ? this.game.prog.turnMul() : 1);
     ac.jwAnim = 0;
     this.game.econ.onDocked(f, ac.stand);
     this.startServices(ac, remote);
@@ -946,7 +969,13 @@ export class Sim {
   stepHoldShort(ac, dt, now) {
     const f = ac.flight;
     const st = this.runwayState(ac.rwy);
-    const free = !st.busy && !this.arrivalClose(ac.rwy, 62);
+    const P = this.game.prog;
+    if (P && P.storm(now)) {
+      this.addDelay(f, 'weather', (dt * TIME_SCALE) / 60);
+      this.place(ac);
+      return;
+    }
+    const free = !st.busy && !this.arrivalClose(ac.rwy, P ? P.depGap() : 62);
     if (!free) {
       this.addDelay(f, 'runway', (dt * TIME_SCALE) / 60);
       this.place(ac);

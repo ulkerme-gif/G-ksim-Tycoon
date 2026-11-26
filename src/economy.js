@@ -1,11 +1,13 @@
 // Para, havayolu anlaşmaları, uçuş tarifeleri, memnuniyet ve puan
-import { START_MONEY, AIRLINES, AIRCRAFT, FEES, CITIES, DAILY, G, BUILDINGS } from './config.js';
+import { START_MONEY, AIRLINES, CHARTERS, AIRCRAFT, FEES, CITIES, DAILY, G, BUILDINGS } from './config.js';
 import { rng, clamp, money, wrapPi } from './util.js';
 
-const blankDay = () => ({ income: { landing: 0, pax: 0, retail: 0, jetway: 0, hangar: 0 }, expense: { build: 0, upkeep: 0 }, flights: 0, pax: 0, diverted: 0 });
+const blankDay = () => ({ income: { landing: 0, pax: 0, retail: 0, jetway: 0, hangar: 0 }, expense: { build: 0, upkeep: 0 }, flights: 0, pax: 0, diverted: 0, ontime: 0, goarounds: 0, jw: 0, wide: 0, charters: 0 });
+// seviye bonusu uygulanan uçuş gelirleri
+const FLIGHT_INCOME = new Set(['landing', 'pax', 'retail', 'jetway', 'hangar', 'fuel', 'parking']);
 
-export const INCOME_NAMES = { landing: 'İniş ücretleri', pax: 'Yolcu hizmet ücretleri', retail: 'Terminal satışları', jetway: 'Köprü kullanımı', hangar: 'Hangar bakımı' };
-export const EXPENSE_NAMES = { build: 'İnşaat', upkeep: 'Bakım ve personel' };
+export const INCOME_NAMES = { landing: 'İniş ücretleri', pax: 'Yolcu hizmet ücretleri', retail: 'Terminal satışları', jetway: 'Köprü kullanımı', hangar: 'Hangar bakımı', fuel: 'Yakıt satışı', parking: 'Otopark ve ulaşım', charter: 'Charter ödemeleri', bonus: 'Görev ve başarım ödülleri' };
+export const EXPENSE_NAMES = { build: 'İnşaat', upkeep: 'Bakım ve personel', upgrade: 'Yükseltmeler' };
 
 export class Economy {
   constructor(game, seed = Date.now() % 1e9) {
@@ -25,7 +27,11 @@ export class Economy {
   }
 
   airline(id) {
-    return AIRLINES.find((a) => a.id === id);
+    return AIRLINES.find((a) => a.id === id) || CHARTERS.find((a) => a.id === id);
+  }
+
+  get prog() {
+    return this.game.prog;
   }
 
   notify(msg, kind = 'info') {
@@ -45,6 +51,7 @@ export class Economy {
     return true;
   }
   earn(amount, cat) {
+    if (FLIGHT_INCOME.has(cat) && this.prog) amount *= this.prog.incomeMul();
     this.money += amount;
     this.today.income[cat] = (this.today.income[cat] || 0) + amount;
   }
@@ -91,23 +98,33 @@ export class Economy {
     req.push({ ok: W.list('runway').some((r) => r.len * 16 >= t.minRunway), text: `En az ${t.minRunway.toLocaleString('tr-TR')} m pist` });
     req.push({ ok: W.list('stand').some((s) => (a.type === 'wide' ? s.size === 'L' : true)), text: a.type === 'wide' ? 'Geniş gövde park yeri' : 'Park yeri' });
     if (a.needsHangar) req.push({ ok: W.list('hangar').length > 0, text: 'Bakım hangarı' });
+    if (a.minLevel) req.push({ ok: (this.prog ? this.prog.level : 1) >= a.minLevel, text: `Seviye ${a.minLevel}` });
     if (a.minStars > 0) req.push({ ok: this.rating() >= a.minStars, text: `Havalimanı puanı ${a.minStars.toString().replace('.', ',')}★` });
     return req;
   }
 
   estimate(a, perDay) {
     const t = AIRCRAFT[a.type];
-    const pax = t.seats * a.load;
-    const per = t.landingFee + pax * (FEES.paxArr + FEES.paxDep + FEES.retail);
-    return Math.round(per * perDay);
+    const P = this.prog;
+    const pax = Math.min(t.seats, t.seats * a.load * (P ? P.loadMul() : 1));
+    let per = t.landingFee + pax * (FEES.paxArr + FEES.paxDep + 1.5 * FEES.retail * (P ? P.retailMul() : 1));
+    if (P) per += pax * P.parkingRate() + P.fuelFor(a.type);
+    return Math.round(per * perDay * (P ? P.incomeMul() : 1));
   }
 
   genOffers() {
     const taken = new Set(this.contracts.map((c) => c.airline));
     const pool = AIRLINES.filter((a) => !taken.has(a.id));
-    // açık olanlar önce, sonra bir sonraki kilidi gösteren
-    pool.sort((a, b) => a.minStars - b.minStars || this.rand() - 0.5);
-    this.offers = pool.slice(0, 4).map((a) => {
+    const lvl = this.prog ? this.prog.level : 1;
+    const n = this.prog ? this.prog.offerCount() : 4;
+    const stars = this.rating();
+    const open = (a) => (a.minLevel || 0) <= lvl && a.minStars <= stars;
+    // açık olanlardan rastgele, sonuna bir sonraki kilidi gösteren
+    const openList = pool.filter(open).map((a) => [a, this.rand()]).sort((x, y) => x[1] - y[1]).map((x) => x[0]);
+    const locked = pool.filter((a) => !open(a)).sort((a, b) => (a.minLevel || 0) - (b.minLevel || 0) || a.minStars - b.minStars);
+    const pick = openList.slice(0, n - (locked.length ? 1 : 0));
+    pick.push(...locked.slice(0, n - pick.length));
+    this.offers = pick.map((a) => {
       const perDay = a.perDay[0] + Math.floor(this.rand() * (a.perDay[1] - a.perDay[0] + 1));
       return { id: this.seq++, airline: a.id, perDay, type: a.type };
     });
@@ -146,10 +163,10 @@ export class Economy {
     this.notify(why ? `${a.name} anlaşmayı bitirdi: ${why}` : `${a.name} ile anlaşma sonlandırıldı`, why ? 'bad' : 'info');
   }
 
-  schedule(c, day, fromMin) {
+  schedule(c, day, fromMin, only) {
     const a = this.airline(c.airline);
     c.times.forEach((tm, k) => {
-      if (tm < fromMin) return;
+      if (tm < fromMin || (only && !only.includes(k))) return;
       const num = c.base + k * 2;
       const t = AIRCRAFT[c.type];
       const arr = (day - 1) * 1440 + tm;
@@ -159,6 +176,26 @@ export class Economy {
       });
     });
     this.game.sim.flights.sort((x, y) => x.arr - y.arr);
+  }
+
+  // memnun havayolu sefer ekler: yeni saatler en büyük boşluklara
+  expand(c, add) {
+    const idx = [];
+    for (let n = 0; n < add; n++) {
+      const ts = [345, ...[...c.times].sort((x, y) => x - y), 1365];
+      let best = 0, at = 0;
+      for (let k = 0; k < ts.length - 1; k++) if (ts[k + 1] - ts[k] > best) {
+        best = ts[k + 1] - ts[k];
+        at = Math.round((ts[k] + ts[k + 1]) / 2);
+      }
+      c.times.push(at);
+      c.cities.push(CITIES[Math.floor(this.rand() * CITIES.length)]);
+      idx.push(c.times.length - 1);
+    }
+    c.perDay = c.times.length;
+    const day = this.game.day();
+    this.schedule(c, day, (this.game.time % 1440) + 50, idx);
+    this.schedule(c, day + 1, 0, idx);
   }
 
   // ---------------------------------------------------------------- gün dönümü
@@ -172,12 +209,14 @@ export class Economy {
     if (this.history.length > 30) this.history.shift();
     this.notify(`${day - 1}. gün bitti: gelir ${money(inc)}, gider ${money(exp)}`, inc - exp >= 0 ? 'good' : 'warn');
     this.today = blankDay();
+    if (this.prog) this.prog.endDay(this.history[this.history.length - 1]);
     for (const c of this.contracts) this.schedule(c, day + 1, 0);
     const sim = this.game.sim;
     const keepFrom = (day - 2) * 1440;
     sim.flights = sim.flights.filter((f) => f.arr >= keepFrom || !['departed', 'diverted', 'cancelled'].includes(f.status));
     this.genOffers();
     this.newWind();
+    if (this.prog) this.prog.startDay(day);
   }
 
   newWind() {
@@ -200,7 +239,8 @@ export class Economy {
   pax(f) {
     const a = this.airline(f.airline);
     const t = AIRCRAFT[f.type];
-    return Math.round(t.seats * a.load * (0.88 + this.rand() * 0.16));
+    const m = this.prog ? this.prog.loadMul() : 1;
+    return Math.min(t.seats, Math.round(t.seats * a.load * m * (0.88 + this.rand() * 0.16)));
   }
 
   onLanded(f) {
@@ -213,7 +253,8 @@ export class Economy {
   onDocked(f, stand) {
     f.paxArr = this.pax(f);
     this.earn(f.paxArr * FEES.paxArr, 'pax');
-    this.earn((f.paxArr * FEES.retail) / 2, 'retail');
+    const rm = this.prog ? this.prog.retailMul() : 1;
+    this.earn((f.paxArr * FEES.retail * rm) / 2, 'retail');
     if (stand.jetway) this.earn(FEES.jetway, 'jetway');
     this.today.pax += f.paxArr;
     this.totals.pax += f.paxArr;
@@ -222,7 +263,9 @@ export class Economy {
   onPushback(f, stand) {
     f.paxDep = this.pax(f);
     this.earn(f.paxDep * FEES.paxDep, 'pax');
-    this.earn(f.paxDep * FEES.retail, 'retail');
+    this.earn(f.paxDep * FEES.retail * (this.prog ? this.prog.retailMul() : 1), 'retail');
+    const park = this.prog ? this.prog.parkingRate() : 0;
+    if (park) this.earn(f.paxDep * park, 'parking');
     this.today.pax += f.paxDep;
     this.totals.pax += f.paxDep;
     f.jetway = !!stand.jetway;
@@ -231,12 +274,15 @@ export class Economy {
   onDeparted(f) {
     this.today.flights++;
     this.totals.flights++;
+    if (this.prog) this.prog.onDeparted(f);
     const c = this.contractOf(f);
     if (!c) return;
     c.done++;
-    // gecikme: 15 dk'ya kadar sorun yok, 45 dk'dan sonra ciddi
-    let d = f.delay < 15 ? 3 : f.delay < 45 ? 1 - ((f.delay - 15) / 30) * 3 : -Math.min(10, 2 + (f.delay - 45) / 12);
+    // gecikme: 15 dk'ya kadar sorun yok, 45 dk'dan sonra ciddi (hava kaynaklı gecikme sayılmaz)
+    const dl = Math.max(0, f.delay - ((f.why && f.why.weather) || 0));
+    let d = dl < 15 ? 3 : dl < 45 ? 1 - ((dl - 15) / 30) * 3 : -Math.min(10, 2 + (dl - 45) / 12);
     d += f.jetway ? 1 : -0.5;
+    if (this.prog) d += this.prog.satBonus();
     d -= (f.goArounds || 0) * 2;
     this.changeSat(c, d);
   }
@@ -246,7 +292,7 @@ export class Economy {
     const a = this.airline(f.airline);
     this.notify(`${f.code} (${a.name}) başka havalimanına yönlendirildi: ${why}`, 'bad');
     const c = this.contractOf(f);
-    if (c) this.changeSat(c, -15);
+    if (c) this.changeSat(c, f.wx ? -5 : -15);
   }
 
   changeSat(c, d) {
@@ -277,7 +323,7 @@ export class Economy {
     return { seed: this.seed, money: this.money, contracts: this.contracts, offers: this.offers, today: this.today, history: this.history, seq: this.seq, wind: this.wind, totals: this.totals };
   }
   fromJSON(o) {
-    Object.assign(this, { money: o.money, contracts: o.contracts, offers: o.offers, today: o.today, history: o.history, seq: o.seq, wind: o.wind, totals: o.totals || { pax: 0, flights: 0 } });
+    Object.assign(this, { money: o.money, contracts: o.contracts, offers: o.offers, today: { ...blankDay(), ...o.today }, history: o.history, seq: o.seq, wind: o.wind, totals: o.totals || { pax: 0, flights: 0 } });
     this.seed = o.seed;
     this.rand = rng(o.seed + o.seq);
   }

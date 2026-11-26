@@ -12,6 +12,7 @@ import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
 import hangarWallUrl from '../assets/hangar_wall.jpg';
 import concreteUrl from '../assets/concrete.jpg';
 import { AIRCRAFT } from './config.js';
+import { aircraftLights } from './lights.js';
 
 export const A = {};   // yüklenen modeller
 
@@ -45,6 +46,7 @@ export async function loadAssets() {
   await MeshoptDecoder.ready;
   const [terminal, tower, jetway, e170, stairs] = await Promise.all([parseGlb(terminalGlb), parseGlb(towerGlb), parseGlb(jetwayGlb), parseGlb(e170Glb), parseGlb(stairsGlb)]);
   A.e170 = shadows(e170, true, false);
+  splitE170Gear(A.e170);
   A.stairs = shadows(stairs, true, false);
   terminal.traverse((m) => {
     if (m.isMesh) {
@@ -61,6 +63,40 @@ export async function loadAssets() {
   A.jetway = shadows(jetway);
   A.hangarWall = loadTex(hangarWallUrl);
   A.concrete = loadTex(concreteUrl);
+}
+
+// E170: iniş takımı üçgenlerini ayrı ağlara ayır (kalkıştan sonra toplanabilsin).
+// burun dikmesi z≈-11, ana takımlar |x|≈1.8–3.4, z≈-1.5..1; motorlar |x|>4 olduğundan karışmaz
+function splitE170Gear(root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const v = new THREE.Vector3();
+  const isGear = (p) => (Math.abs(p.x) < 0.65 && p.z > -12.2 && p.z < -10.3 && p.y < 1.35) || (Math.abs(p.x) > 1.6 && Math.abs(p.x) < 3.5 && p.z > -1.7 && p.z < 1.1 && p.y < 1.3);
+  for (const name of ['grey', 'dark']) {
+    const m = root.getObjectByName(name);
+    if (!m || !m.isMesh || !m.geometry.index) continue;
+    const mw = new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld);
+    const pos = m.geometry.attributes.position, idx = m.geometry.index;
+    const keep = [], gear = [];
+    for (let k = 0; k < idx.count; k += 3) {
+      let all = true;
+      for (let c = 0; c < 3 && all; c++) all = isGear(v.fromBufferAttribute(pos, idx.getX(k + c)).applyMatrix4(mw));
+      (all ? gear : keep).push(idx.getX(k), idx.getX(k + 1), idx.getX(k + 2));
+    }
+    if (!gear.length) continue;
+    const g2 = new THREE.BufferGeometry();
+    for (const key in m.geometry.attributes) g2.setAttribute(key, m.geometry.attributes[key]);
+    g2.setIndex(gear);
+    m.geometry = m.geometry.clone();
+    m.geometry.setIndex(keep);
+    const gm = new THREE.Mesh(g2, m.material);
+    gm.name = 'gear_' + name;
+    gm.castShadow = true;
+    gm.position.copy(m.position);
+    gm.quaternion.copy(m.quaternion);
+    gm.scale.copy(m.scale);
+    m.parent.add(gm);
+  }
 }
 
 // ---------------------------------------------------------------- binalar
@@ -338,7 +374,8 @@ function buildAircraftParts(type, airline) {
       [fin, mats.tail],
       [mergeGeometries([wingR, wingL, stabR, stabL].map((g) => (g.index ? g.toNonIndexed() : g))), mats.wing],
       [mergeGeometries(eng.map((g) => (g.index ? g.toNonIndexed() : g))), mats.engine],
-      [mergeGeometries([...intake, ...gear].map((g) => (g.index ? g.toNonIndexed() : g))), mats.dark],
+      [mergeGeometries(intake.map((g) => (g.index ? g.toNonIndexed() : g))), mats.dark],
+      [mergeGeometries(gear.map((g) => (g.index ? g.toNonIndexed() : g))), mats.dark, 'gear'],
     ],
     noseZ: -L / 2,
     gearNoseZ: noseZ,
@@ -404,33 +441,27 @@ export function makeAircraft(type, airline) {
   if (!acCache.has(key)) acCache.set(key, t.model ? buildModelLivery(type, airline) : buildAircraftParts(type, airline));
   const P = acCache.get(key);
   const g = new THREE.Group();
+  const gear = [];
   if (P.model) {
     const m = A.e170.clone(true);
     m.getObjectByName('fin').material = P.fin;
+    m.traverse((o) => o.name.startsWith('gear_') && gear.push(o));
     g.add(m);
     for (const [geo, mat] of P.decals) g.add(new THREE.Mesh(geo, mat));
   } else {
-    for (const [geo, mat] of P.meshes) {
+    for (const [geo, mat, tag] of P.meshes) {
       const m = new THREE.Mesh(geo, mat);
       m.castShadow = true;
       m.receiveShadow = false;
       g.add(m);
+      if (tag === 'gear') gear.push(m);
     }
   }
-  // seyir ışıkları ve çakar
-  const lamp = (color, x, y, z, r = 0.35) => {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), new THREE.MeshBasicMaterial({ color }));
-    m.position.set(x, y, z);
-    g.add(m);
-    return m;
-  };
+  g.userData.gear = gear;
+  // seyir ışıkları, çakar, flaş ve iniş farı (gece parlayan noktalar)
   const yc = t.gearZ + t.dia / 2;
   const L = t.lights || { wingY: yc - t.dia * 0.15, wingZ: t.span * 0.27, wingX: t.span / 2, top: yc + t.dia / 2 + 0.25, noseZ: -t.len * 0.39, noseY: t.gearZ + 0.9 };
-  g.userData.beacon = lamp(0xff2020, 0, L.top, 0, 0.3);
-  lamp(0xff3030, -L.wingX, L.wingY, L.wingZ, 0.3);
-  lamp(0x30ff60, L.wingX, L.wingY, L.wingZ, 0.3);
-  // kalkış/iniş ışığı
-  g.userData.landing = lamp(0xfff6d0, 0, L.noseY, L.noseZ, 0.25);
+  aircraftLights(g, { ...L, tailZ: t.len * 0.47 }, yc);
   return g;
 }
 

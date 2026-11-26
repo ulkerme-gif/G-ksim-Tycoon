@@ -54,9 +54,33 @@
 </aside>
 
 <div id="zoomctl" role="group" aria-label="Yakınlaştırma">
+  <button id="fly-btn" class="fly-btn" hidden title="Uç: kendi uçağınızla kalkın" aria-label="Uç"><svg viewBox="0 0 24 24"><path d="M21 15.5v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V8.5l-8 5v2l8-2.5V18l-2 1.5V21l3.5-1 3.5 1v-1.5L13 18v-5z" fill="currentColor" stroke="none"/></svg><span>Uç</span></button>
   <button data-z="in" title="Yakınlaştır (+)" aria-label="Yakınlaştır"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   <button data-z="out" title="Uzaklaştır (−)" aria-label="Uzaklaştır"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
   <button data-z="north" title="Kuzeye döndür" aria-label="Kuzeye döndür"><svg id="compass" viewBox="0 0 24 24"><path d="M12 3l4 9h-8z" fill="#ff6b6b" stroke="#ff6b6b"/><path d="M12 21l-4-9h8z"/></svg></button>
+</div>
+<div id="fly" hidden>
+  <div id="fly-hud">
+    <div class="fh"><small>Hız</small><b id="fh-spd">0</b><i>kt</i></div>
+    <div class="fh"><small>İrtifa</small><b id="fh-alt">0</b><i>ft</i></div>
+    <div class="fh"><small>Dikey</small><b id="fh-vs">0</b><i>ft/dk</i></div>
+    <div class="fh"><small>Yön</small><b id="fh-hdg">000</b><i>°</i></div>
+    <div class="fh"><small>Gaz</small><b id="fh-thr">0</b><i>%</i></div>
+    <div class="fh st"><span id="fh-flap">FLAP 1</span><span id="fh-gear" class="on">TAKIM ↓</span><span id="fh-brk"></span></div>
+  </div>
+  <div id="fly-msg" hidden></div>
+  <div id="fly-stick" aria-label="Çubuk"><div id="fly-knob"></div></div>
+  <div id="fly-right">
+    <div id="fly-btns">
+      <button data-f="gear">Takım <kbd>G</kbd></button>
+      <button data-f="flaps">Flap <kbd>F</kbd></button>
+      <button data-f="brake">Fren <kbd>B</kbd></button>
+      <button data-f="cam">Kamera <kbd>C</kbd></button>
+      <button data-f="again">Başa al</button>
+      <button data-f="exit" class="exit">Çık <kbd>Esc</kbd></button>
+    </div>
+    <div id="fly-thr" aria-label="Gaz kolu"><div id="fly-thr-fill"></div><span>GAZ</span></div>
+  </div>
 </div>
 <input type="file" id="file-in" accept=".json,application/json,text/plain" hidden>
 <div id="sel" hidden></div>

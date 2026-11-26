@@ -5,6 +5,7 @@ import { money, moneyShort, hhmm, esc, num, clamp } from './util.js';
 import { STATUS } from './sim.js';
 import { INCOME_NAMES, EXPENSE_NAMES } from './economy.js';
 import { levelInfo, UPGRADES, RIVAL_COUNT } from './progress.js';
+import { GFX } from './gfx.js';
 
 // ilerlemesi sayı olarak gösterilen başarımlar
 const ACH_NUM = new Set(['f100', 'f1k', 'f5k', 'p10k', 'p100k', 'p1m', 'p10m', 'jw10', 'busy15', 'bigday', 'charter5', 'expand5', 'streak7', 'con8', 'wide3', 'term4', 'sat95']);
@@ -85,6 +86,7 @@ export class UI {
     });
     window.addEventListener('keydown', (e) => {
       if (e.target.closest && e.target.closest('input,textarea')) return;
+      if (this.game.pilot && this.game.pilot.active) return;   // uçuşta tuşlar pilota ait
       const t = TOOLS.find((x) => x.key === e.code);
       if (t) this.game.builder.setTool(t.id);
       if (e.code === 'KeyR') this.game.builder.rotate();
@@ -185,6 +187,7 @@ export class UI {
         <button class="btn" data-m="save">Tarayıcıya kaydet</button>
         <button class="btn" data-m="load" ${has ? '' : 'disabled'}>Tarayıcıdaki kaydı yükle</button>
         <button class="btn" data-m="new">Yeni oyun</button>
+        <button class="btn" data-m="gfx">Grafik ve pil: ${g.gfx.name}</button>
         <button class="btn" data-m="help">Kontroller</button>
         <button class="btn" data-m="close">Kapat</button>
       </div><p class="muted">Oyun her oyun saatinde tarayıcıya kendiliğinden kaydedilir. Dosyaya kaydettiğiniz ilerlemeyi başka bir cihazda ya da tarayıcı verisi silindikten sonra açabilirsiniz (iPad'de dosya İndirilenler klasörüne gider). Kısayollar: Ctrl/⌘+S kaydet, Ctrl/⌘+O aç.</p>`, (k) => {
@@ -194,6 +197,20 @@ export class UI {
       if (k === 'load') g.load();
       if (k === 'new') this.ask('Yeni oyun başlasın mı?', 'Kaydedilmemiş ilerleme kaybolur.', 'Yeni oyun', () => g.newGame());
       if (k === 'help') this.help();
+      if (k === 'gfx') this.gfxMenu();
+    });
+  }
+
+  gfxMenu() {
+    const g = this.game;
+    this.modal(`<h2>Grafik ve pil</h2><div class="col gfx">${Object.values(GFX)
+      .map((q) => `<button class="btn ${g.gfx.key === q.key ? 'primary' : ''}" data-m="${q.key}"><b>${q.name}</b><small>${q.desc}</small></button>`)
+      .join('')}</div><p class="muted">Oyun duraklatıldığında ve ekrana dokunulmadığında çizim neredeyse durur; pil boşa harcanmaz. Uçuş sırasında ve hızlı oyunda kare hızı seçtiğiniz sınıra kadar çıkar.</p>
+      <div class="row"><button class="btn" data-m="close">Kapat</button></div>`, (k) => {
+      if (GFX[k]) {
+        g.applyGfx(k);
+        this.toast(`Grafik: ${GFX[k].name}`, 'good');
+      }
     });
   }
 
@@ -206,6 +223,8 @@ export class UI {
         <tr><td>Eğme</td><td>Sağ tık yukarı/aşağı · iki parmağı birlikte yukarı/aşağı kaydır · PageUp / PageDown</td></tr>
         <tr><td>İnşaat</td><td>Soldaki araçlar ya da 1–9 tuşları; R döndürür, Esc seçime döner</td></tr>
         <tr><td>Boyama</td><td>Taksi yolu, apron ve yıkım: sürükleyin (iPad'de tek parmak)</td></tr>
+        <tr><td>Uçuş kulübü</td><td>Sağ alttaki Uç düğmesi · çubuk ya da oklar/WASD · gaz PageUp/PageDown · G takım, F flap, B fren, C kamera, Esc çık</td></tr>
+        <tr><td>Pil</td><td>Menü → Grafik ve pil: Pil tasarrufu / Dengeli / Yüksek</td></tr>
         <tr><td>Zaman</td><td>Boşluk duraklatır; üstteki düğmelerle hız</td></tr>
       </table><div class="row"><button class="btn" data-m="close">Tamam</button></div>`);
   }
@@ -529,6 +548,9 @@ export class UI {
     $('#stars').title = `Havalimanı puanı: ${String(r).replace('.', ',')}`;
     const P = g.prog;
     P.tick(0.25);
+    const fb = $('#fly-btn');
+    const canFly = P.up('pilot') > 0;
+    if (fb.hidden === canFly) fb.hidden = !canFly;
     const L = P.level, cur = levelInfo(L), nx = levelInfo(L + 1);
     $('#lvl-n').textContent = L;
     $('#lvl-name').textContent = cur.name;

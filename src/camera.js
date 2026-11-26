@@ -33,6 +33,7 @@ export class CameraRig {
     this.buildDrag = () => false; // tek parmak/sol tık sürüklemesi inşa için mi?
     this.ray = new THREE.Raycaster();
     this.lastTap = null;
+    this.disabled = false;       // uçuş modunda kamera başka yerden sürülür
     this.bind();
     this.apply();
   }
@@ -72,7 +73,7 @@ export class CameraRig {
     }, { passive: false });
     document.addEventListener('gesturechange', (e) => {
       e.preventDefault();
-      if (touchDevice || !e.scale) return;
+      if (touchDevice || !e.scale || this.disabled) return;
       const k = gs / e.scale;
       gs = e.scale;
       this.zoomBy(k, e.clientX, e.clientY, false);
@@ -86,6 +87,7 @@ export class CameraRig {
 
   wheel(e) {
     e.preventDefault();
+    if (this.disabled) return;
     let dy = e.deltaY;
     if (e.deltaMode === 1) dy *= 16;
     else if (e.deltaMode === 2) dy *= 400;
@@ -106,7 +108,7 @@ export class CameraRig {
   }
 
   down(e) {
-    if (e.target !== this.dom) return;
+    if (e.target !== this.dom || this.disabled) return;
     try {
       this.dom.setPointerCapture(e.pointerId);
     } catch (err) {
@@ -152,7 +154,7 @@ export class CameraRig {
   move(e) {
     const p = this.pointers.get(e.pointerId);
     if (!p) {
-      if (e.pointerType === 'mouse' && this.onHover) this.onHover(e.clientX, e.clientY);
+      if (e.pointerType === 'mouse' && this.onHover && !this.disabled) this.onHover(e.clientX, e.clientY);
       return;
     }
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -305,6 +307,7 @@ export class CameraRig {
   }
 
   update(dt) {
+    if (this.disabled) return;
     const k = this.dist * 1.1 * dt;
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     let mx = 0, mz = 0;

@@ -4,6 +4,7 @@ import { CELL, MAP_W, G, AIRCRAFT, STANDS, TIME_SCALE, TAXI_SPEED, TAXI_TURN_SPE
 import { cellX, cellZ, toCellI, toCellJ, dirOf, headingOf, wrapPi, clamp, smooth } from './util.js';
 import { findPath } from './path.js';
 import { makeAircraft, makeVehicle } from './assets.js';
+import { LU, makePool } from './lights.js';
 
 const GLIDE = Math.tan((3 * Math.PI) / 180);
 const APP_DIST = 7500;     // yaklaşmanın başladığı uzaklık (eşikten)
@@ -214,6 +215,7 @@ export class Sim {
 
   removeAc(ac) {
     this.group.remove(ac.mesh);
+    if (ac.pool) this.group.remove(ac.pool);
     for (const v of ac.vehicles) this.removeVehicle(v);
     this.ac = this.ac.filter((a) => a !== ac);
     for (const [, st] of this.rw) if (st.busy && st.busy.ac === ac) st.busy = null;
@@ -231,6 +233,29 @@ export class Sim {
     m.rotation.z = -ac.roll;
     m.userData.beacon.visible = ac.beacon && this.blink % 1 < 0.12;
     m.userData.landing.visible = ac.lights;
+    const sb = (this.blink * 1.25) % 1.3;
+    m.userData.strobe.visible = ac.lights && ac.phase !== 'taxi_in' && ac.phase !== 'docking' && (sb < 0.05 || (sb > 0.13 && sb < 0.18));
+    // kalkıştan sonra iniş takımı toplanır
+    const gearUp = (ac.phase === 'takeoff' || ac.phase === 'departed') && ac.y > 25;
+    if (m.userData.gearUp !== gearUp) {
+      m.userData.gearUp = gearUp;
+      for (const gm of m.userData.gear) gm.visible = !gearUp;
+    }
+    // gece iniş farının yerdeki ışığı
+    const night = LU.night.value;
+    if (night > 0.05 && ac.lights && ac.y < 120) {
+      if (!ac.pool) {
+        ac.pool = makePool();
+        this.group.add(ac.pool);
+      }
+      const d = dirOf(ac.h);
+      const ahead = ac.t.len * 0.5 + 28 + ac.y * 0.8;
+      const sc = 26 + ac.y * 0.35;
+      ac.pool.position.set(ac.x + d.x * ahead, 0.35, ac.z + d.z * ahead);
+      ac.pool.rotation.y = -ac.h;
+      ac.pool.scale.set(sc * 0.8, 1, sc * 1.7);
+      ac.pool.visible = true;
+    } else if (ac.pool) ac.pool.visible = false;
   }
 
   sAlong(end, x, z) {
@@ -394,7 +419,7 @@ export class Sim {
       if (!st.busy) {
         st.busy = { ac, kind: 'landing' };
         ac.cleared = true;
-      } else if (st.busy.ac !== ac && s > -500) return this.goAround(ac, now);
+      } else if (st.busy.ac !== ac && s > -500) return this.goAround(ac, now, !!st.busy.ac.player);
     }
     // yavaşla
     const vT = s > -2000 ? ac.t.vTouch : ac.t.vApp;
@@ -415,12 +440,15 @@ export class Sim {
     this.place(ac);
   }
 
-  goAround(ac, now) {
+  goAround(ac, now, byPlayer = false) {
     ac.phase = 'goaround';
     ac.flight.status = 'goaround';
-    ac.flight.goArounds = (ac.flight.goArounds || 0) + 1;
-    this.game.econ.today.goarounds++;
-    this.game.econ.notify(`${ac.flight.code} pas geçti: pist dolu`, 'warn');
+    // kendi uçağınız yüzünden pas geçme havayoluna ve görevlere yazılmaz
+    if (!byPlayer) {
+      ac.flight.goArounds = (ac.flight.goArounds || 0) + 1;
+      this.game.econ.today.goarounds++;
+    }
+    this.game.econ.notify(`${ac.flight.code} pas geçti: ${byPlayer ? 'pistte sizin uçağınız var' : 'pist dolu'}`, 'warn');
     const end = ac.end;
     const d = dirOf(end.h);
     const left = { x: d.z, z: -d.x };

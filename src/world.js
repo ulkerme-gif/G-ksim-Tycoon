@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CELL, MAP_W, MAP_H, G, BUILDINGS, STANDS, RUNWAYS, DAILY, AIRCRAFT } from './config.js';
 import { cellX, cellZ, ROT_H, ROT_D, dirOf, headingOf, clamp, rng } from './util.js';
 import { makeTerminal, makeTower, makeHangar, makeTrees, A } from './assets.js';
+import { farmlandTexture, makeScenery } from './scenery.js';
 
 const N = MAP_W * MAP_H;
 const Y = { apron: 0.06, taxi: 0.1, runway: 0.14, decal: 0.18 };
@@ -92,11 +93,21 @@ export class World {
         x.fillRect(r() * w, r() * h, 2, 2 + r() * 3);
       }
     }, true);
-    grass.repeat.set(160, 160);
-    const outer = new THREE.Mesh(new THREE.PlaneGeometry(24000, 24000), new THREE.MeshStandardMaterial({ map: grass, color: 0x93a882, roughness: 1, envMapIntensity: 0.4 }));
+    // havalimanının hemen çevresi çim, dışarısı tarla
+    const W0 = MAP_W * CELL + 300, H0 = MAP_H * CELL + 300;
+    grass.repeat.set(W0 / 150, H0 / 150);
+    const near = new THREE.Mesh(new THREE.PlaneGeometry(W0, H0), new THREE.MeshStandardMaterial({ map: grass, color: 0x93a882, roughness: 1, envMapIntensity: 0.4, polygonOffset: true, polygonOffsetFactor: -0.5, polygonOffsetUnits: -0.5 }));
+    near.rotation.x = -Math.PI / 2;
+    near.position.y = 0.01;
+    near.receiveShadow = true;
+    this.root.add(near);
+    const farm = farmlandTexture();
+    farm.repeat.set(15, 15);
+    const outer = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.MeshStandardMaterial({ map: farm, color: 0xb4bea8, roughness: 1, envMapIntensity: 0.3 }));
     outer.rotation.x = -Math.PI / 2;
     outer.receiveShadow = true;
     this.root.add(outer);
+    this.scenery = makeScenery(this.root);
     const mown = canvasTex(256, 256, (x, w, h) => {
       x.fillStyle = '#58853a';
       x.fillRect(0, 0, w, h);
@@ -461,15 +472,16 @@ export class World {
         for (let k = -4; k <= 4; k++) pts.push([P.x + side.x * k * 5.5, P.z + side.z * k * 5.5, s2]);
     }
     const g = new THREE.Group();
-    const geo = new THREE.SphereGeometry(0.7, 6, 4);
-    const mats = [0xfff4d6, 0x4cff7a, 0xff4040].map((c) => new THREE.MeshBasicMaterial({ color: c }));
+    // gündüz görünen küçük armatürler (gece parıltısı lights.js'te)
+    const geo = new THREE.CylinderGeometry(0.28, 0.32, 0.35, 8);
+    const mats = [0xe9e4d2, 0x7fd59a, 0xd97a72].map((c) => new THREE.MeshBasicMaterial({ color: c }));
     mats.forEach((mat, kind) => {
       const list = pts.filter((p) => p[2] === kind);
       if (!list.length) return;
       const im = new THREE.InstancedMesh(geo, mat, list.length);
       const m = new THREE.Matrix4();
       list.forEach(([x, z], i) => {
-        m.makeTranslation(x, 0.8, z);
+        m.makeTranslation(x, 0.2, z);
         im.setMatrixAt(i, m);
       });
       g.add(im);

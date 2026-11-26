@@ -9,22 +9,29 @@ import { Sim } from './sim.js';
 import { Economy } from './economy.js';
 import { Progress } from './progress.js';
 import { Rain } from './weather.js';
+import { GFX, loadGfx, saveGfx } from './gfx.js';
+import { SkyDome } from './sky.js';
+import { NightLights } from './lights.js';
+import { Pilot } from './pilot.js';
 import { UI } from './ui.js';
 import { loadAssets } from './assets.js';
 import { clamp, lerp, money } from './util.js';
 
 const SAVE_KEY = 'havalimani.save.v1';
+const _sd = new THREE.Vector3();
 
 class Game {
   constructor() {
     const canvas = document.getElementById('view');
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const gk = loadGfx();
+    this.aa = GFX[gk].aa;
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.aa, powerPreference: gk === 'high' ? 'high-performance' : 'default' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;   // gölge haritası kendi sıklığımızla güncellenir (pil)
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(42, 1, 2, 40000);
     this.sky = new THREE.Color();
@@ -45,19 +52,51 @@ class Game {
     this.lastSpeed = 1;
     this.time = 6 * 60;
     this.rig = new CameraRig(this.camera, canvas);
-    this.resize();
+    this.skyDome = new SkyDome(this.scene);
+    this.applyGfx(gk, true);
     window.addEventListener('resize', () => this.resize());
+    // son kullanıcı girdisi: boştayken çizim seyrekleşir
+    this.lastInput = 0;
+    const poke = () => (this.lastInput = performance.now());
+    for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart']) window.addEventListener(ev, poke, { passive: true, capture: true });
+    this.lastDraw = 0;
+    this.lastShadow = 0;
+    this.camSig = '';
+  }
+
+  // ---------------------------------------------------------------- grafik kalitesi
+  applyGfx(key, first) {
+    const q = GFX[key];
+    const prev = this.gfx;
+    this.gfx = q;
+    saveGfx(key);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr));
+    this.resize();
+    this.sun.castShadow = q.shadows;
+    if (this.sun.shadow.mapSize.x !== q.shadowSize) {
+      this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
+      if (this.sun.shadow.map) {
+        this.sun.shadow.map.dispose();
+        this.sun.shadow.map = null;
+      }
+    }
+    this.sun.shadow.radius = q.soft ? 3 : 1;
+    this.renderer.shadowMap.needsUpdate = true;
+    if (this.skyDome) this.skyDome.setClouds(q.clouds);
+    if (!first && prev && q.aa !== this.aa) this.ui.toast('Kenar yumuşatma ayarı oyun yeniden açıldığında değişir', 'warn');
   }
 
   async start() {
     await loadAssets();
     this.world = new World(this.scene);
+    this.nightLights = new NightLights(this.scene, this.world);
     this.econ = new Economy(this);
     this.prog = new Progress(this);
     this.rain = new Rain(this.scene);
     this.sim = new Sim(this);
     this.builder = new Builder(this);
     this.ui = new UI(this);
+    this.pilot = new Pilot(this);
     const B = this.builder;
     this.rig.buildDrag = () => B.isPaint();
     this.rig.onDrag = (p, x, y) => B.onDrag(p, x, y);
@@ -102,6 +141,10 @@ class Game {
   }
 
   setSpeed(s) {
+    if (this.pilot && this.pilot.active && s > 1) {
+      s = 1;
+      this.ui.toast('Uçuş sırasında oyun 1× hızda akar', 'warn');
+    }
     if (s) this.lastSpeed = s;
     this.speed = s;
   }
@@ -149,6 +192,12 @@ class Game {
 
   // ---------------------------------------------------------------- döngü
   frame(t) {
+    // kare hızı sınırı: hareket yoksa (duraklatılmış, kamera durgun, dokunma yok) çok seyrek çiz
+    const q = this.gfx;
+    const busy = this.speed > 0 || (this.pilot && this.pilot.active) || t - this.lastInput < 1500 || this.camMoving;
+    const fps = busy ? q.fps : q.idleFps;
+    if (t - this.lastDraw < 1000 / fps - 3) return;
+    this.lastDraw = t;
     const dt = Math.min(0.1, (t - this.last) / 1000);
     this.last = t;
     this.rig.update(dt);
@@ -168,8 +217,18 @@ class Game {
         if (Math.floor(this.time / 60) !== hourBefore) this.save(false);
       }
     }
+    if (this.pilot) this.pilot.update(dt);
     this.lighting(dt);
     this.ui.update(dt);
+    // kamera hareket ediyor mu (yumuşak yakınlaştırma, takip)?
+    const e = this.camera.matrixWorld.elements;
+    const sig = `${e[12].toFixed(1)},${e[13].toFixed(1)},${e[14].toFixed(1)},${e[8].toFixed(3)},${e[10].toFixed(3)}`;
+    this.camMoving = sig !== this.camSig;
+    this.camSig = sig;
+    if (q.shadows && (t - this.lastShadow >= 1000 / q.shadowHz - 3 || this.camMoving)) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.lastShadow = t;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -225,6 +284,15 @@ class Game {
       this.renderer.toneMappingExposure += flash * 0.35;
     }
     F.color.copy(this.sky);
+    // gökyüzü, gece ışıkları, kasaba pencereleri
+    const sunDir = _sd.set(Math.sin(az) * 0.8, elev, -Math.cos(az) * 0.6).normalize();
+    const grey = Math.max(fog, storm);
+    const cover = clamp(0.38 + 0.55 * fog + 0.7 * storm + (P && P.wx.kind === 'rush' ? -0.1 : 0), 0, 1);
+    this.skyDome.update(this.camera, this.sky, day * (1 - 0.5 * storm), sunDir, this.sun.color, cover, grey, dt * Math.max(1, this.speed));
+    const lightsOn = clamp(Math.max(1.25 - day * 2.3, fog * 0.7, storm * 0.85), 0, 1);
+    const obs = this.pilot && this.pilot.active && this.pilot.ac ? this.pilot.ac.pos : this.camera.position;
+    this.nightLights.update(this.camera, this.renderer, lightsOn, obs);
+    for (const m of this.world.scenery.windowMats) m.emissiveIntensity = clamp(1.1 - day * 2.2, 0, 1) * 1.3;
   }
 
   // ---------------------------------------------------------------- kayıt
@@ -336,6 +404,8 @@ class Game {
     this.sim.clear();
     this.scene.remove(this.world.root);
     this.world = new World(this.scene);
+    this.nightLights.world = this.world;
+    this.nightLights.version = -1;
     this.sim.world = this.world;
     this.sim.compVersion = -1;
     this.builder.world = this.world;

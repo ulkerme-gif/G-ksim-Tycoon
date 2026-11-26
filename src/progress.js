@@ -43,6 +43,8 @@ export function levelFor(pax) {
 
 // ---------------------------------------------------------------- yükseltmeler
 export const UPGRADES = [
+  { id: 'pilot', name: 'Uçuş kulübü', desc: 'Havalimanınıza ait bir uçak. Pistten kendiniz kalkar, uçar ve inersiniz; iyi inişler ödül getirir. Sağ alttaki "Uç" düğmesiyle başlar.',
+    levels: [{ cost: 3_000_000, lvl: 2 }, { cost: 12_000_000, lvl: 5 }, { cost: 30_000_000, lvl: 8 }], eff: (n) => ['Kilitli', 'Bölgesel jet ile uçuş', 'Bölgesel ve dar gövde jet', 'Bölgesel, dar ve geniş gövde jet'][n] },
   { id: 'ground', name: 'Yer hizmetleri filosu', desc: 'Daha çok yakıt, bagaj ve ikram aracı. Uçaklar kapıda daha kısa kalır, park yerleri çabuk boşalır.',
     levels: [{ cost: 3_000_000, lvl: 2 }, { cost: 8_000_000, lvl: 4 }, { cost: 18_000_000, lvl: 6 }], eff: (n) => `Kapıda kalma süresi %${[100, 88, 78, 68][n]}` },
   { id: 'retail', name: 'Çarşı ve duty free', desc: 'Terminalde mağazalar, restoranlar ve duty free.',
@@ -113,6 +115,10 @@ const ACH = [
   { id: 'top1', name: 'Bir numara', desc: 'Haftalık yolcuda 1. sıra', reward: 25_000_000, prog: (c) => [RIVALS.length + 1 - c.P.bestRank, RIVALS.length] },
   { id: 'upall', name: 'Tam donanım', desc: 'Tüm yükseltmeler son kademede', reward: 10_000_000, prog: (c) => [UPGRADES.reduce((s, u) => s + c.P.up(u.id), 0), UPGRADES.reduce((s, u) => s + u.levels.length, 0)] },
   { id: 'lv10', name: 'Dünya Yıldızı', desc: '10. seviyeye ulaşın', reward: 0, prog: (c) => [c.P.level, 10] },
+  { id: 'pilot1', name: 'Kaptan pilot', desc: 'Kendi uçağınızla kalkıp piste inin', reward: 500_000, flag: true },
+  { id: 'butter', name: 'Tereyağı gibi', desc: 'Dakikada 60 fitten yumuşak iniş', reward: 1_000_000, flag: true },
+  { id: 'nightland', name: 'Gece pilotu', desc: 'Gece piste inin', reward: 1_000_000, flag: true },
+  { id: 'widepilot', name: 'Dev kuş', desc: 'Geniş gövdeli uçakla piste inin', reward: 2_000_000, flag: true },
 ];
 
 const effDelay = (f) => Math.max(0, (f.delay || 0) - ((f.why && f.why.weather) || 0));
@@ -509,7 +515,8 @@ export class Progress {
     if (this.level < nx.lvl) return this.E.notify(`${u.name} için seviye ${nx.lvl} gerekli`, 'bad');
     if (!this.E.spend(nx.cost, 'upgrade')) return;
     this.ups[id] = this.up(id) + 1;
-    this.E.notify(`${u.name} ${this.ups[id]}. kademe: ${u.eff(this.ups[id])}`, 'good');
+    if (id !== 'pilot') this.E.notify(`${u.name} ${this.ups[id]}. kademe: ${u.eff(this.ups[id])}`, 'good');
+    if (id === 'pilot') this.E.notify(this.ups[id] === 1 ? 'Uçuş kulübü açıldı: sağ alttaki "Uç" düğmesine dokunun' : 'Yeni uçak tipi açıldı (Uç düğmesi)', 'good');
     if (id === 'marketing') {
       // mevcut teklifler kalır, boş yerlere yenileri eklenir
       const E = this.E, keep = E.offers;

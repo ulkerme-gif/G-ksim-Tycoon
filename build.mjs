@@ -11,9 +11,12 @@ const res = await build({
   loader: { '.glb': 'binary', '.jpg': 'dataurl' },
   write: false,
   legalComments: 'none',
+  // three'nin DRACOLoader'ı modül adresini import.meta.url'den hesaplar; tek dosyalık pakette sayfa adresi kullanılır
+  banner: { js: 'var __pageUrl = location.href;' },
+  define: { 'import.meta.url': '__pageUrl' },
 });
 const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-const css = readFileSync('src/style.css', 'utf8');
+const css = readFileSync('src/style.css', 'utf8') + '\n' + readFileSync('src/goksim/goksim.css', 'utf8');
 const html = readFileSync('src/index.html', 'utf8').replace('/*__CSS__*/', () => css).replace('/*__JS__*/', () => js);
 writeFileSync('index.html', html);
 console.log(`index.html ${(html.length / 1024).toFixed(0)} KB`);

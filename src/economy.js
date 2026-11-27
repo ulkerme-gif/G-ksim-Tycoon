@@ -6,8 +6,8 @@ const blankDay = () => ({ income: { landing: 0, pax: 0, retail: 0, jetway: 0, ha
 // seviye bonusu uygulanan uçuş gelirleri
 const FLIGHT_INCOME = new Set(['landing', 'pax', 'retail', 'jetway', 'hangar', 'fuel', 'parking']);
 
-export const INCOME_NAMES = { landing: 'İniş ücretleri', pax: 'Yolcu hizmet ücretleri', retail: 'Terminal satışları', jetway: 'Köprü kullanımı', hangar: 'Hangar bakımı', fuel: 'Yakıt satışı', parking: 'Otopark ve ulaşım', charter: 'Charter ödemeleri', bonus: 'Görev ve başarım ödülleri' };
-export const EXPENSE_NAMES = { build: 'İnşaat', upkeep: 'Bakım ve personel', upgrade: 'Yükseltmeler' };
+export const INCOME_NAMES = { landing: 'İniş ücretleri', pax: 'Yolcu hizmet ücretleri', retail: 'Terminal satışları', jetway: 'Köprü kullanımı', hangar: 'Hangar bakımı', fuel: 'Yakıt satışı', parking: 'Otopark ve ulaşım', charter: 'Charter ödemeleri', bonus: 'Görev ve başarım ödülleri', hotel: 'Otel', cargo: 'Kargo uçuşları', museum: 'Havacılık müzesi' };
+export const EXPENSE_NAMES = { build: 'İnşaat', upkeep: 'Bakım ve personel', upgrade: 'Yükseltmeler', hangar: 'Uçuş kulübü uçakları', project: 'Anıt projeler', event: 'Olaylar' };
 
 export class Economy {
   constructor(game, seed = Date.now() % 1e9) {
@@ -69,7 +69,9 @@ export class Economy {
       if (W.ground[k] === G.TAXI) taxi++;
       else if (W.ground[k] === G.APRON && W.obj[k] < 0) apron++;
     }
-    return sum + taxi * DAILY.taxi + apron * DAILY.apron + this.contracts.length * 15_000;
+    const P = this.prog;
+    if (P && P.has('gold')) return 0;   // altın kule: bakım giderleri sıfır
+    return sum + taxi * DAILY.taxi + apron * DAILY.apron + this.contracts.length * 15_000 + (P ? P.projectUpkeep() : 0);
   }
 
   // ---------------------------------------------------------------- puan
@@ -146,6 +148,7 @@ export class Economy {
     const c = { id: this.seq++, airline: a.id, type: o.type, perDay: o.perDay, times, sat: 65, since: this.game.day(), done: 0, warned: false, base: 100 + Math.floor(this.rand() * 80) * 10, cities: [] };
     for (let k = 0; k < o.perDay; k++) c.cities.push(CITIES[Math.floor(this.rand() * CITIES.length)]);
     this.contracts.push(c);
+    if (this.prog) this.prog.markAirline(c.airline);
     this.offers = this.offers.filter((x) => x !== o);
     const now = this.game.time;
     const day = this.game.day();
@@ -247,7 +250,7 @@ export class Economy {
     const t = AIRCRAFT[f.type];
     this.earn(t.landingFee, 'landing');
     const h = Math.min(2, this.game.world.list('hangar').length);
-    if (h) this.earn(FEES.hangarPerFlight * h * (f.type === 'wide' ? 2 : 1), 'hangar');
+    if (h) this.earn(FEES.hangarPerFlight * h * (f.type === 'wide' ? 2 : 1) * (this.prog && this.prog.has('mro') ? 2 : 1), 'hangar');
   }
 
   onDocked(f, stand) {
@@ -256,6 +259,7 @@ export class Economy {
     const rm = this.prog ? this.prog.retailMul() : 1;
     this.earn((f.paxArr * FEES.retail * rm) / 2, 'retail');
     if (stand.jetway) this.earn(FEES.jetway, 'jetway');
+    if (this.prog && this.prog.has('hotel')) this.earn(f.paxArr * 60, 'hotel');
     this.today.pax += f.paxArr;
     this.totals.pax += f.paxArr;
   }

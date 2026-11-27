@@ -2,6 +2,7 @@
 // yükseltmeler, hava olayları ve özel teklifler (charter, genişleme talepleri)
 import { AIRLINES, CHARTERS, AIRCRAFT, CITIES, STANDS } from './config.js';
 import { clamp, money, moneyShort, num, hhmm } from './util.js';
+import { PROJECTS, EVENTS, projectById, perfection } from './projects.js';
 
 // ---------------------------------------------------------------- seviyeler (toplam yolcuya göre)
 const LEVELS = [
@@ -43,8 +44,8 @@ export function levelFor(pax) {
 
 // ---------------------------------------------------------------- yükseltmeler
 export const UPGRADES = [
-  { id: 'pilot', name: 'Uçuş kulübü', desc: 'Havalimanınıza ait bir uçak. Pistten kendiniz kalkar, uçar ve inersiniz; iyi inişler ödül getirir. Sağ alttaki "Uç" düğmesiyle başlar.',
-    levels: [{ cost: 3_000_000, lvl: 2 }, { cost: 12_000_000, lvl: 5 }, { cost: 30_000_000, lvl: 8 }], eff: (n) => ['Kilitli', 'Bölgesel jet ile uçuş', 'Bölgesel ve dar gövde jet', 'Bölgesel, dar ve geniş gövde jet'][n] },
+  { id: 'pilot', name: 'Uçuş kulübü', desc: 'GökSim uçuş motoruyla kendi pistinizden kalkıp inersiniz. Uçakları kulübün hangarından alırsınız (F-16\'dan A380 ve SR-71\'e). Sağ alttaki "Uç" düğmesiyle başlar.',
+    levels: [{ cost: 3_000_000, lvl: 2 }], eff: (n) => ['Kilitli', 'Açık: hangardan uçak alıp uçabilirsiniz'][n] },
   { id: 'ground', name: 'Yer hizmetleri filosu', desc: 'Daha çok yakıt, bagaj ve ikram aracı. Uçaklar kapıda daha kısa kalır, park yerleri çabuk boşalır.',
     levels: [{ cost: 3_000_000, lvl: 2 }, { cost: 8_000_000, lvl: 4 }, { cost: 18_000_000, lvl: 6 }], eff: (n) => `Kapıda kalma süresi %${[100, 88, 78, 68][n]}` },
   { id: 'retail', name: 'Çarşı ve duty free', desc: 'Terminalde mağazalar, restoranlar ve duty free.',
@@ -118,7 +119,12 @@ const ACH = [
   { id: 'pilot1', name: 'Kaptan pilot', desc: 'Kendi uçağınızla kalkıp piste inin', reward: 500_000, flag: true },
   { id: 'butter', name: 'Tereyağı gibi', desc: 'Dakikada 60 fitten yumuşak iniş', reward: 1_000_000, flag: true },
   { id: 'nightland', name: 'Gece pilotu', desc: 'Gece piste inin', reward: 1_000_000, flag: true },
-  { id: 'widepilot', name: 'Dev kuş', desc: 'Geniş gövdeli uçakla piste inin', reward: 2_000_000, flag: true },
+  { id: 'widepilot', name: 'Dev kuş', desc: 'Boeing 777 ya da A380 ile piste inin', reward: 2_000_000, flag: true },
+  { id: 'proj1', name: 'İlk anıt', desc: 'Bir anıt projeyi tamamlayın', reward: 20_000_000, flag: true },
+  { id: 'goldtower', name: 'Zirvenin simgesi', desc: 'Altın kuleyi dikin', reward: 0, flag: true },
+  { id: 'perfection', name: 'Kusursuz havalimanı', desc: 'Mükemmellik %100', reward: 100_000_000, flag: true },
+  { id: 'hangar5', name: 'Filo sahibi', desc: 'Hangarda 5 uçak', reward: 5_000_000, prog: (c) => [(c.P.hangar || []).length, 5] },
+  { id: 'hangar10', name: 'Hava kuvvetleri', desc: 'Hangardaki 10 uçağın hepsi', reward: 50_000_000, prog: (c) => [(c.P.hangar || []).length, 10] },
 ];
 
 const effDelay = (f) => Math.max(0, (f.delay || 0) - ((f.why && f.why.weather) || 0));
@@ -141,9 +147,142 @@ export class Progress {
     this.special = [];
     this.count = { charters: 0, expansions: 0 };
     this.queue = [];           // gösterilecek pencereler
+    this.hangar = [];          // uçuş kulübünde sahip olunan GökSim uçakları
     this.newGoals = false;     // sekme üzerindeki nokta
     this.tAch = 0;
     this.charterSlot = 0;
+    this.proj = {};            // anıt projeler: id -> { start, end, done }
+    this.mods = [];            // geçici etkiler: { k, mul, until }
+    this.flags = {};
+    this.everAir = [];         // anlaşma yapılmış havayolları (mükemmellik için)
+    this.forceRush = 0;
+    this.ev = null;            // bugünün olay kartı: { day, at, fired }
+  }
+
+  // ---------------------------------------------------------------- anıt projeler
+  has(id) {
+    const p = this.proj[id];
+    return !!(p && p.done);
+  }
+  mod(k) {
+    const t = this.game.time;
+    let m = 1;
+    for (const x of this.mods) if (x.k === k && x.until > t) m *= x.mul;
+    return m;
+  }
+  addMod(k, mul, minutes) {
+    this.mods = this.mods.filter((x) => x.until > this.game.time);
+    this.mods.push({ k, mul, until: this.game.time + minutes });
+  }
+  toMidnight() {
+    return 1440 - (this.game.time % 1440);
+  }
+  canBuild(id) {
+    const pr = projectById(id);
+    if (this.proj[id]) return { ok: false, why: this.proj[id].done ? 'Tamamlandı' : 'İnşaatta' };
+    if (this.level < pr.lvl) return { ok: false, why: `Seviye ${pr.lvl} gerekli` };
+    if (pr.needHangar && this.hangar.length < pr.needHangar) return { ok: false, why: `Hangarda en az ${pr.needHangar} uçak gerekli` };
+    if (pr.needAll && PROJECTS.some((p) => p.id !== id && !this.has(p.id))) return { ok: false, why: 'Önce öteki tüm anıt projeler' };
+    if (Object.values(this.proj).some((p) => !p.done)) return { ok: false, why: 'Aynı anda tek inşaat' };
+    if (this.E.money < pr.cost) return { ok: false, why: 'Para yetmiyor' };
+    return { ok: true };
+  }
+  startProject(id) {
+    const pr = projectById(id);
+    const c = this.canBuild(id);
+    if (!c.ok) return this.E.notify(`${pr.name}: ${c.why}`, 'bad');
+    if (!this.E.spend(pr.cost, 'project')) return;
+    const t = this.game.time;
+    this.proj[id] = { start: t, end: t + pr.days * 1440, done: false };
+    this.E.notify(`${pr.name} inşaatı başladı: ${pr.days} gün sürecek (çitin güney dışında)`, 'good');
+  }
+  projectUpkeep() {
+    return PROJECTS.reduce((s, p) => s + (this.has(p.id) ? p.cost * 0.001 : 0), 0);
+  }
+  tickProjects() {
+    for (const pr of PROJECTS) {
+      const st = this.proj[pr.id];
+      if (!st || st.done || this.game.time < st.end) continue;
+      st.done = true;
+      this.E.notify(`${pr.name} açıldı! ${pr.eff}`, 'good');
+      this.queue.push({ kind: 'project', id: pr.id });
+      this.grant('proj1');
+      if (pr.id === 'gold') this.grant('goldtower');
+    }
+  }
+
+  // ---------------------------------------------------------------- olay kartları
+  avgIncome() {
+    const H = this.E.history.slice(-3);
+    if (!H.length) return 2_000_000;
+    return H.reduce((s, d) => s + Object.entries(d.income).reduce((a, [k, v]) => a + (k === 'bonus' ? 0 : v), 0), 0) / H.length;
+  }
+  eventCost(frac) {
+    return Math.max(200_000, Math.round((this.avgIncome() * frac) / 10_000) * 10_000);
+  }
+  toast(text, kind = 'good') {
+    this.E.notify(text, kind);
+  }
+  satAll(d) {
+    for (const c of this.E.contracts) this.E.changeSat(c, d);
+  }
+  satOne(cid, d) {
+    const c = this.E.contracts.find((x) => x.id === cid);
+    if (c) this.E.changeSat(c, d);
+  }
+  offerExpand(cid) {
+    const E = this.E;
+    const c = E.contracts.find((x) => x.id === cid);
+    if (!c || this.special.some((s) => s.kind === 'expand')) return;
+    const add = 1;
+    this.special.push({ id: E.seq++, kind: 'expand', contract: c.id, airline: c.airline, add, bonus: { regional: 300_000, narrow: 500_000, wide: 1_000_000 }[c.type], day: this.game.day() });
+    this.game.ui && this.game.ui.dot('airlines');
+  }
+  tickEvents() {
+    const g = this.game;
+    const day = g.day();
+    if (this.level < 3 || !this.E.contracts.length) return;
+    if (!this.ev || this.ev.day !== day) this.ev = { day, at: (day - 1) * 1440 + 600 + Math.floor(this.E.rand() * 360), fired: false };
+    if (this.ev.fired || g.time < this.ev.at || (g.pilot && g.pilot.active)) return;
+    this.ev.fired = true;
+    const yest = this.E.history[this.E.history.length - 1];
+    const pool = EVENTS.filter((e) => (!e.minLevel || this.level >= e.minLevel) && (!e.needUp || this.up(e.needUp) > 0) && (!e.noFlag || !this.flags[e.noFlag]) && (!e.needLate || (yest && yest.flights > 4 && yest.ontime < yest.flights * 0.6)) && (!e.needContracts || this.E.contracts.length));
+    if (!pool.length) return;
+    const ev = pool[Math.floor(this.E.rand() * pool.length)];
+    const inst = { id: ev.id, costs: ev.choices.map((c) => (c.cost ? this.eventCost(c.cost) : 0)) };
+    if (ev.id === 'ceo') {
+      const c = this.E.contracts[Math.floor(this.E.rand() * this.E.contracts.length)];
+      inst.contract = c.id;
+      inst.airlineName = this.E.airline(c.airline).name;
+    }
+    this.queue.push({ kind: 'event', inst });
+  }
+  resolveEvent(inst, k) {
+    const ev = EVENTS.find((e) => e.id === inst.id);
+    const ch = ev.choices[k];
+    const cost = inst.costs[k];
+    if (cost && !this.E.spend(cost, 'event')) {
+      // para yetmezse ikinci seçenek uygulanır
+      return ev.choices.length > 1 && k === 0 ? this.resolveEvent(inst, 1) : null;
+    }
+    ch.apply(this, inst);
+  }
+
+  // ---------------------------------------------------------------- mükemmellik
+  markAirline(id) {
+    if (!this.everAir.includes(id) && AIRLINES.some((a) => a.id === id)) this.everAir.push(id);
+  }
+  upgradesDone() {
+    return [UPGRADES.reduce((s, u) => s + this.up(u.id), 0), UPGRADES.reduce((s, u) => s + u.levels.length, 0)];
+  }
+  achDone() {
+    return ACH.filter((a) => a.id !== 'perfection' && this.ach[a.id]).length;
+  }
+  achTotal() {
+    return ACH.length - 1;
+  }
+  perfection() {
+    return perfection(this);
   }
 
   get E() {
@@ -155,23 +294,23 @@ export class Progress {
     return this.ups[id] || 0;
   }
   incomeMul() {
-    return 1 + Math.min(0.6, LEGEND_BONUS * Math.max(0, this.level - LEVELS.length));
+    return (1 + Math.min(0.6, LEGEND_BONUS * Math.max(0, this.level - LEVELS.length))) * (this.has('gold') ? 1.1 : 1);
   }
   turnMul() {
-    return [1, 0.88, 0.78, 0.68][this.up('ground')];
+    return [1, 0.88, 0.78, 0.68][this.up('ground')] * (this.has('mro') ? 0.92 : 1) * this.mod('turn');
   }
   retailMul() {
-    return [1, 1.3, 1.6, 2][this.up('retail')] * (this.wx.kind === 'rush' ? 1.3 : 1);
+    return [1, 1.3, 1.6, 2][this.up('retail')] * (this.wx.kind === 'rush' ? 1.3 : 1) * (this.has('hotel') ? 1.15 : 1) * this.mod('retail');
   }
   loadMul() {
-    return 1 + this.up('marketing') * 0.03 + (this.wx.kind === 'rush' ? 0.08 : 0);
+    return (1 + this.up('marketing') * 0.03 + (this.wx.kind === 'rush' ? 0.08 : 0) + (this.has('metro') ? 0.05 : 0) + (this.has('expo') ? 0.04 : 0)) * this.mod('load');
   }
   parkingRate() {
-    return [0, 40, 80, 130][this.up('parking')] * (this.wx.kind === 'rush' ? 1.5 : 1);
+    return [0, 40, 80, 130][this.up('parking')] * (this.wx.kind === 'rush' ? 1.5 : 1) * (this.has('metro') ? 1.5 : 1);
   }
   fuelFor(type) {
     const v = [0, 15_000, 30_000, 50_000][this.up('fuel')];
-    return v * (type === 'wide' ? 2.5 : type === 'regional' ? 0.6 : 1);
+    return v * (type === 'wide' ? 2.5 : type === 'regional' ? 0.6 : 1) * this.mod('fuel');
   }
   offerCount() {
     return 4 + this.up('marketing');
@@ -233,6 +372,11 @@ export class Progress {
     if (rec.flights >= 15 && !rec.diverted && !rec.goarounds) this.grant('perfect');
     if (this.wx.kind === 'storm' && rec.flights >= 8 && !rec.diverted) this.grant('storm');
     this.bestDayPax = Math.max(this.bestDayPax, rec.pax || 0);
+    // gece kargo uçuşları ve müze ziyaretçileri
+    const flightInc = ['landing', 'pax', 'retail', 'jetway', 'hangar', 'fuel', 'parking'].reduce((s, k) => s + (rec.income[k] || 0), 0);
+    if (this.has('cargo')) E.earn(Math.round(flightInc * 0.12), 'cargo');
+    if (this.has('museum') && this.hangar.length) E.earn(3_000_000 * this.hangar.length, 'museum');
+    this.mods = this.mods.filter((x) => x.until > this.game.time);
     // süresi dolan özel teklifler
     this.special = this.special.filter((s) => s.kind === 'charter' && s.expires > this.game.time);
     void E;
@@ -250,14 +394,15 @@ export class Progress {
     const sod = (day - 1) * 1440;
     const r = E.rand();
     let w = { day, kind: 'clear' };
-    if (day >= 3) {
+    if (this.forceRush === day) w = { day, kind: 'rush', show: true };
+    else if (day >= 3) {
       if (r < 0.12) {
         const from = sod + 300 + Math.floor(E.rand() * 60);
         w = { day, kind: 'fog', from, to: from + 150 + Math.floor(E.rand() * 120) };
       } else if (r < 0.2 && this.level >= STORM_LEVEL) {
         const from = sod + 600 + Math.floor(E.rand() * 540);
         w = { day, kind: 'storm', from, to: from + 60 + Math.floor(E.rand() * 60) };
-      } else if (r < 0.3 && this.level >= 2) w = { day, kind: 'rush' };
+      } else if (r < (this.has('expo') ? 0.42 : 0.3) && this.level >= 2) w = { day, kind: 'rush' };
     }
     this.wx = w;
     if (quiet) return;
@@ -516,7 +661,7 @@ export class Progress {
     if (!this.E.spend(nx.cost, 'upgrade')) return;
     this.ups[id] = this.up(id) + 1;
     if (id !== 'pilot') this.E.notify(`${u.name} ${this.ups[id]}. kademe: ${u.eff(this.ups[id])}`, 'good');
-    if (id === 'pilot') this.E.notify(this.ups[id] === 1 ? 'Uçuş kulübü açıldı: sağ alttaki "Uç" düğmesine dokunun' : 'Yeni uçak tipi açıldı (Uç düğmesi)', 'good');
+    if (id === 'pilot') this.E.notify('Uçuş kulübü açıldı: sağ alttaki "Uç" düğmesinden hangara girip ilk uçağınızı alın', 'good');
     if (id === 'marketing') {
       // mevcut teklifler kalır, boş yerlere yenileri eklenir
       const E = this.E, keep = E.offers;
@@ -571,6 +716,8 @@ export class Progress {
     this.ensureChallenges();
     this.checkChallenges();
     this.checkLevel();
+    this.tickProjects();
+    this.tickEvents();
     // öğleden sonra ikinci charter şansı
     const day = g.day();
     if (this.level >= CHARTER_LEVEL && g.time % 1440 >= 720 && this.charterSlot !== day) {
@@ -582,6 +729,7 @@ export class Progress {
     if (this.tAch <= 0) {
       this.tAch = 1;
       this.checkAch();
+      if (!this.ach.perfection && this.perfection().pct >= 100) this.grant('perfection');
       const r = this.rank();
       if (r < this.bestRank) {
         const gained = this.bestRank - r;
@@ -598,6 +746,28 @@ export class Progress {
 
   showQueued(q) {
     const ui = this.game.ui;
+    if (q.kind === 'event') {
+      const inst = q.inst;
+      const ev = EVENTS.find((e) => e.id === inst.id);
+      const text = ev.text.replace('{airline}', inst.airlineName || '');
+      ui.modal(`<div class="evc"><div class="ev-tag">Olay</div><h2>${ev.title}</h2><p>${text}</p>
+        <div class="col">${ev.choices.map((c, k) => {
+          const cost = inst.costs[k];
+          const can = !cost || this.E.money >= cost;
+          return `<button class="btn ${k === 0 ? 'primary' : ''}" data-m="c${k}" ${can ? '' : 'disabled'}>${c.label}${cost ? ` · ${money(cost)}` : ''}</button>`;
+        }).join('')}</div>
+        <p class="muted">Bedeller son günlerin gelirine göre belirlenir.</p></div>`, (k) => {
+        if (k && k[0] === 'c') this.resolveEvent(inst, +k.slice(1));
+        else this.resolveEvent(inst, ev.choices.length - 1);
+      }, { sticky: true });
+      return;
+    }
+    if (q.kind === 'project') {
+      const pr = projectById(q.id);
+      ui.modal(`<div class="lvlup"><div class="lv-badge">★</div><h2>${pr.name} açıldı</h2><p>${pr.desc}</p><p class="lv-rew"><b>${pr.eff}</b></p>
+        <p class="muted">Yapı havalimanının güney çitinin dışında.</p><div class="row"><button class="btn primary" data-m="ok">Harika</button></div></div>`);
+      return;
+    }
     if (q.kind === 'level') {
       const info = levelInfo(q.level);
       const un = this.unlocksFor(q.level);
@@ -623,7 +793,7 @@ export class Progress {
 
   // ---------------------------------------------------------------- kayıt
   toJSON() {
-    return { level: this.level, ach: this.ach, ch: this.ch, streak: this.streak, bestStreak: this.bestStreak, bestRank: this.bestRank, bestDayPax: this.bestDayPax, maxAc: this.maxAc, ups: this.ups, wx: this.wx, special: this.special, count: this.count, charterSlot: this.charterSlot };
+    return { level: this.level, ach: this.ach, ch: this.ch, streak: this.streak, bestStreak: this.bestStreak, bestRank: this.bestRank, bestDayPax: this.bestDayPax, maxAc: this.maxAc, ups: this.ups, wx: this.wx, special: this.special, count: this.count, charterSlot: this.charterSlot, hangar: this.hangar, proj: this.proj, mods: this.mods, flags: this.flags, everAir: this.everAir, forceRush: this.forceRush, ev: this.ev };
   }
   fromJSON(o) {
     if (!o) {
@@ -635,13 +805,23 @@ export class Progress {
       this.wx = { day: this.game.day(), kind: 'clear' };
       this.ch = null;
       this.ensureChallenges();
+      for (const c of this.E.contracts) this.markAirline(c.airline);
       this.queue.push({ kind: 'intro' });
       return;
     }
     Object.assign(this, {
       level: o.level || 1, ach: o.ach || {}, ch: o.ch || null, streak: o.streak || 0, bestStreak: o.bestStreak || 0, bestRank: o.bestRank || RIVALS.length + 1,
       bestDayPax: o.bestDayPax || 0, maxAc: o.maxAc || 0, ups: o.ups || {}, wx: o.wx || { day: 0, kind: 'clear' }, special: o.special || [], count: { charters: 0, expansions: 0, ...(o.count || {}) }, charterSlot: o.charterSlot || 0,
+      hangar: o.hangar || [], proj: o.proj || {}, mods: o.mods || [], flags: o.flags || {}, everAir: o.everAir || [], forceRush: o.forceRush || 0, ev: o.ev || null,
     });
+    for (const c of this.E.contracts) this.markAirline(c.airline);
+    // eski uçuş kulübü kademeleri (bölgesel/dar/geniş) hangar uçaklarına çevrilir
+    if ((this.ups.pilot || 0) > 1 || (this.ups.pilot && !o.hangar)) {
+      const n = this.ups.pilot;
+      const give = ['f16', 'f18', 'b777'].slice(0, n);
+      this.hangar = [...new Set([...this.hangar, ...give])];
+      this.ups.pilot = 1;
+    }
   }
 }
 

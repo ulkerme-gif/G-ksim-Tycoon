@@ -96,7 +96,12 @@ export function farmlandTexture() {
 }
 
 // pencere dokusu: gündüz cephe, gece yanan pencereler (emissive)
-function facadeTextures() {
+let facadeCache = null;
+export function facadeTextures() {
+  if (facadeCache) return facadeCache;
+  return (facadeCache = facadeTextures0());
+}
+function facadeTextures0() {
   const r = rng(77);
   const lit = [];
   const day = canvasTex(64, 128, (x, W, H) => {

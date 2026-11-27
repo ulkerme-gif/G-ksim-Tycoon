@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f1720">
 <title>Havalimanı Tycoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap" media="print" onload="this.media='all'">
 <style>/*__CSS__*/</style>
 </head>
 <body>
@@ -45,7 +48,7 @@
   <button data-panel="airlines"><svg viewBox="0 0 24 24"><path d="M12 3v18M4 12l8-3 8 3M8 20l4-1.5 4 1.5"/></svg><span>Havayolları</span></button>
   <button data-panel="finance"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Finans</span></button>
   <button data-panel="goals"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg><span>Hedefler</span></button>
-  <button data-panel="upgrades"><svg viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6M5 20h14"/></svg><span>Yükseltme</span></button>
+  <button data-panel="upgrades"><svg viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6M5 20h14"/></svg><span>Geliştir</span></button>
   <button data-panel="guide"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h8M8 18h5"/></svg><span>Rehber</span></button>
 </nav>
 <aside id="panel" hidden>
@@ -59,27 +62,159 @@
   <button data-z="out" title="Uzaklaştır (−)" aria-label="Uzaklaştır"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
   <button data-z="north" title="Kuzeye döndür" aria-label="Kuzeye döndür"><svg id="compass" viewBox="0 0 24 24"><path d="M12 3l4 9h-8z" fill="#ff6b6b" stroke="#ff6b6b"/><path d="M12 21l-4-9h8z"/></svg></button>
 </div>
-<div id="fly" hidden>
-  <div id="fly-hud">
-    <div class="fh"><small>Hız</small><b id="fh-spd">0</b><i>kt</i></div>
-    <div class="fh"><small>İrtifa</small><b id="fh-alt">0</b><i>ft</i></div>
-    <div class="fh"><small>Dikey</small><b id="fh-vs">0</b><i>ft/dk</i></div>
-    <div class="fh"><small>Yön</small><b id="fh-hdg">000</b><i>°</i></div>
-    <div class="fh"><small>Gaz</small><b id="fh-thr">0</b><i>%</i></div>
-    <div class="fh st"><span id="fh-flap">FLAP 1</span><span id="fh-gear" class="on">TAKIM ↓</span><span id="fh-brk"></span></div>
-  </div>
-  <div id="fly-msg" hidden></div>
-  <div id="fly-stick" aria-label="Çubuk"><div id="fly-knob"></div></div>
-  <div id="fly-right">
-    <div id="fly-btns">
-      <button data-f="gear">Takım <kbd>G</kbd></button>
-      <button data-f="flaps">Flap <kbd>F</kbd></button>
-      <button data-f="brake">Fren <kbd>B</kbd></button>
-      <button data-f="cam">Kamera <kbd>C</kbd></button>
-      <button data-f="again">Başa al</button>
-      <button data-f="exit" class="exit">Çık <kbd>Esc</kbd></button>
+<div id="gs" hidden>
+  <div id="gs-hud" aria-hidden="true"></div>
+  <div id="gs-toasts" role="status" aria-live="polite"></div>
+  <div id="gs-yoke" aria-hidden="true"></div>
+  <aside id="gs-drawer" hidden>
+    <header>
+      <h2 id="gs-drawer-title"></h2>
+      <button class="x" id="gs-drawer-close" aria-label="Paneli kapat">×</button>
+    </header>
+    <div class="drawer-body">
+      <section data-panel="aircraft" data-title="Hangar" hidden>
+        <p class="lead">Uçuş kulübünün uçakları. Sahip olduklarınızla uçabilirsiniz; uçak değişince seçili pistten yeniden başlarsınız.</p>
+        <div id="gs-ac-list" class="ac-list"></div>
+      </section>
+      <section data-panel="extras" data-title="Özel özellikler" hidden>
+        <p class="lead">Seçili uçağın modelinde gelen hareketli parçalar. Açmak ya da kapatmak için dokunun.</p>
+        <div id="gs-ex-list" class="cam-grid"></div>
+        <p class="sub" id="gs-ex-empty">Bu uçağın modelinde açılıp kapanan özel bir parça yok.</p>
+        <p class="sub" id="gs-ex-auto"></p>
+      </section>
+      <section data-panel="camera" data-title="Kamera" hidden>
+        <div class="cam-grid">
+          <button class="cam-btn" data-gcam="chase"><b>Takip</b><span>Uçağın arkasından. Sürükleyerek çevirin, tekerlekle yaklaşın.</span><kbd>1</kbd></button>
+          <button class="cam-btn" data-gcam="cockpit"><b>Kokpit</b><span>Pilot gözünden. Sürükleyerek etrafa bakın.</span><kbd>2</kbd></button>
+          <button class="cam-btn" data-gcam="orbit"><b>Serbest</b><span>Uçağın çevresinde serbestçe dolaşın.</span><kbd>3</kbd></button>
+          <button class="cam-btn" data-gcam="tower"><b>Kule</b><span>Havalimanınızın kulesinden uçağı izleyin.</span><kbd>4</kbd></button>
+        </div>
+        <button class="btn" id="gs-cam-reset">Kamerayı sıfırla</button>
+        <p class="sub">Çift tıklama da kamerayı sıfırlar. C tuşu modlar arasında geçer.</p>
+      </section>
+      <section data-panel="autopilot" data-title="Otopilot" hidden>
+        <button class="btn ap-toggle" id="gs-ap-toggle" aria-pressed="false">Otopilotu aç</button>
+        <div class="ap-rows">
+          <div class="ap-row"><label for="gs-ap-spd">Hız <small>kt</small></label><button class="step" data-ap-step="spd:-10">−</button><input id="gs-ap-spd" data-ap="spd" type="number"><button class="step" data-ap-step="spd:10">+</button></div>
+          <div class="ap-row"><label for="gs-ap-alt">İrtifa <small>ft</small></label><button class="step" data-ap-step="alt:-500">−</button><input id="gs-ap-alt" data-ap="alt" type="number"><button class="step" data-ap-step="alt:500">+</button></div>
+          <div class="ap-row"><label for="gs-ap-vs">Dikey hız <small>ft/dk</small></label><button class="step" data-ap-step="vs:-100">−</button><input id="gs-ap-vs" data-ap="vs" type="number"><button class="step" data-ap-step="vs:100">+</button></div>
+          <div class="ap-row"><label for="gs-ap-hdg">Baş <small>°</small></label><button class="step" data-ap-step="hdg:-10">−</button><input id="gs-ap-hdg" data-ap="hdg" type="number"><button class="step" data-ap-step="hdg:10">+</button></div>
+        </div>
+        <button class="btn" id="gs-ap-sync">Şu anki değerleri al</button>
+        <p class="sub">Otopilot açıkken hız gazla, irtifa dikey hız sınırıyla tutulur.</p>
+      </section>
+      <section data-panel="settings" data-title="Ayarlar" hidden>
+        <fieldset>
+          <legend>Gerçekçilik</legend>
+          <label class="chk"><input type="checkbox" id="gs-set-realistic"> Gerçekçi mod</label>
+          <p class="sub">Açıkken pistte motor kapalı ve park freni çekili başlarsınız, motoru çalıştırmak zaman alır. Yakıt tükenir, otomatik dümen kapanır. Aşırı G, azami hız, flap ve iniş takımı hız sınırları hasara yol açar. Stall daha sert, iniş takımı daha az affedicidir.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Görünüm</legend>
+          <label class="chk"><input type="checkbox" id="gs-set-hud"> Sol üstte uçuş bilgileri</label>
+          <label class="chk"><input type="checkbox" id="gs-set-panel"> Gösterge paneli</label>
+        </fieldset>
+        <fieldset>
+          <legend>Hava</legend>
+          <p class="sub">Rüzgâr havalimanınızın o günkü rüzgârıdır. Fırtınada türbülans kendiliğinden artar.</p>
+          <label class="field"><span>Ek türbülans</span><input id="gs-set-turb" type="range" min="0" max="1" step="0.05"></label>
+        </fieldset>
+        <fieldset>
+          <legend>Kontroller</legend>
+          <label class="field"><span>Kontrol yöntemi</span>
+            <select id="gs-set-control">
+              <option value="keyboard">Klavye (ok tuşları)</option>
+              <option value="mouse">Fare ile yoke (Y tuşu)</option>
+            </select></label>
+          <label class="field"><span>Hassasiyet</span><input id="gs-set-sens" type="range" min="0.5" max="2" step="0.1"></label>
+          <label class="chk"><input type="checkbox" id="gs-set-invert"> Yunuslama eksenini ters çevir</label>
+          <label class="chk"><input type="checkbox" id="gs-set-autorudder"> Otomatik dümen koordinasyonu</label>
+          <p class="sub">Oyun kumandası takılınca kendiliğinden çalışır.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Ses</legend>
+          <label class="chk"><input type="checkbox" id="gs-set-sound"> Ses açık</label>
+          <label class="field"><span>Ses düzeyi</span><input id="gs-set-volume" type="range" min="0" max="1" step="0.05"></label>
+        </fieldset>
+      </section>
+      <section data-panel="help" data-title="Nasıl uçulur" hidden>
+        <ol class="first-flight">
+          <li>Gazı <kbd>+</kbd> ya da <kbd>Page Up</kbd> ile sonuna kadar açın (dokunmatikte sağdaki gaz kolu).</li>
+          <li>Hız göstergesi yeşil banda girince <kbd>↓</kbd> ile burnu hafifçe kaldırın.</li>
+          <li>Havalandıktan sonra burnu ufkun biraz üstünde tutun, <kbd>←</kbd> <kbd>→</kbd> ile yatırarak dönün.</li>
+          <li>İnerken gazı azaltın, flapları <kbd>F</kbd> ile indirin, iniş takımını <kbd>G</kbd> ile açın. Pist kenarındaki PAPI ışıklarında 2 beyaz 2 kırmızı görünce doğru süzülüştesiniz.</li>
+        </ol>
+        <table class="keys">
+          <caption>Uçuş</caption>
+          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Burun aşağı / yukarı</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Sola / sağa yatış</td></tr>
+          <tr><td><kbd>Z</kbd> <kbd>X</kbd></td><td>İstikamet dümeni ve yerde yönlendirme</td></tr>
+          <tr><td><kbd>+</kbd> <kbd>−</kbd>, <kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Gaz</td></tr>
+          <tr><td><kbd>Home</kbd> <kbd>End</kbd>, <kbd>T</kbd> <kbd>Shift</kbd>+<kbd>T</kbd></td><td>Trim</td></tr>
+        </table>
+        <table class="keys">
+          <caption>Sistemler</caption>
+          <tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Flap indir / topla</td></tr>
+          <tr><td><kbd>G</kbd></td><td>İniş takımı</td></tr>
+          <tr><td><kbd>B</kbd> ya da <kbd>Boşluk</kbd> (basılı)</td><td>Fren</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>B</kbd></td><td>Park freni</td></tr>
+          <tr><td><kbd>K</kbd> / <kbd>Shift</kbd>+<kbd>K</kbd></td><td>Spoiler / spoiler hazır (teker koyunca açılır)</td></tr>
+          <tr><td><kbd>O</kbd></td><td>Özel özellikler (kanopi, kapaklar, kanca)</td></tr>
+          <tr><td><kbd>E</kbd></td><td>Motoru çalıştır / durdur</td></tr>
+          <tr><td><kbd>A</kbd></td><td>Otopilot</td></tr>
+        </table>
+        <table class="keys">
+          <caption>Görünüm ve diğer</caption>
+          <tr><td><kbd>C</kbd>, <kbd>1</kbd>–<kbd>4</kbd></td><td>Kamera</td></tr>
+          <tr><td><kbd>H</kbd> / <kbd>I</kbd></td><td>Gösterge paneli / uçuş bilgileri</td></tr>
+          <tr><td><kbd>Y</kbd></td><td>Fare ile kontrol</td></tr>
+          <tr><td><kbd>P</kbd></td><td>Duraklat</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Pistten yeniden başla</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Paneli kapat · iki kez: havalimanına dön</td></tr>
+        </table>
+        <p class="sub">Piste iyi inişler ödül getirir. Siz pistteyken ya da son yaklaşmadayken öteki uçaklar bekler.</p>
+      </section>
     </div>
-    <div id="fly-thr" aria-label="Gaz kolu"><div id="fly-thr-fill"></div><span>GAZ</span></div>
+  </aside>
+  <div id="gs-bottom">
+    <canvas id="gs-panel" aria-label="Gösterge paneli"></canvas>
+    <nav id="gs-toolbar" aria-label="Uçuş menüsü">
+      <button data-open="aircraft" aria-pressed="false"><svg viewBox="-12 -12 24 24"><path d="M0,-10 L2,-3 L9,1 L9,3 L2,1.5 L1.5,7 L4,9 L4,10 L-4,10 L-4,9 L-1.5,7 L-2,1.5 L-9,3 L-9,1 L-2,-3 Z"/></svg><span>Hangar</span></button>
+      <button data-open="camera" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-2.5h6L17 7h3v12H4z"/><circle cx="12" cy="13" r="3.6"/></svg><span>Kamera</span></button>
+      <button data-open="extras" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z"/></svg><span>Özel</span></button>
+      <button data-open="autopilot" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 12l4.5-4.5M12 3.5v2M20.5 12h-2M3.5 12h2"/></svg><span>Otopilot</span></button>
+      <button data-open="settings" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg><span>Ayarlar</span></button>
+      <button data-open="help" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 1 1 3.6 2.4c-.8.4-1.1.9-1.1 1.8v.6"/><circle cx="12" cy="17" r=".6"/></svg><span>Yardım</span></button>
+      <button id="gs-tb-pause" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg><span>Duraklat</span></button>
+      <button id="gs-tb-exit"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9"/></svg><span>Havalimanına dön</span></button>
+    </nav>
+  </div>
+  <div id="gs-touch" hidden>
+    <div class="stick" aria-label="Kontrol çubuğu"><div class="knob"></div></div>
+    <div class="thr" aria-label="Gaz kolu"><div class="thr-knob"></div><span>Gaz</span></div>
+    <div class="tbtns">
+      <button data-act="brakes">Fren</button>
+      <button data-act="flapsDown">Flap +</button>
+      <button data-act="flapsUp">Flap −</button>
+      <button data-act="gear">Teker</button>
+      <button data-act="spoilers">Spoiler</button>
+      <button data-act="extras">Özel</button>
+      <button data-act="camera">Kamera</button>
+    </div>
+  </div>
+  <div id="gs-crash" class="overlay" hidden>
+    <div class="card">
+      <h2>Kaza</h2>
+      <p id="gs-crash-reason"></p>
+      <p class="sub">Neyse ki bu bir oyun: uçak onarıldı, ücret alınmadı.</p>
+      <div class="row"><button class="btn primary" id="gs-crash-reset">Pistten yeniden başla</button><button class="btn" id="gs-crash-exit">Havalimanına dön</button></div>
+    </div>
+  </div>
+  <div id="gs-pause" class="overlay soft" hidden>
+    <div class="card"><h2>Duraklatıldı</h2><div class="row"><button class="btn primary" id="gs-pause-resume">Devam</button></div></div>
+  </div>
+  <div id="gs-loading" class="overlay soft" hidden>
+    <div class="card"><h2 id="gs-loading-text">Uçak hazırlanıyor…</h2></div>
   </div>
 </div>
 <input type="file" id="file-in" accept=".json,application/json,text/plain" hidden>

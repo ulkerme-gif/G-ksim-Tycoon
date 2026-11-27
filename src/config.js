@@ -118,3 +118,17 @@ export const CHARTERS = [
 export const CITIES = ['Londra', 'Berlin', 'Paris', 'Roma', 'Madrid', 'Viyana', 'Atina', 'Bakü', 'Tiflis', 'Dubai', 'Doha', 'Kahire', 'Amsterdam', 'Münih', 'Zürih',
   'Varşova', 'Budapeşte', 'Prag', 'Kiev', 'Moskova', 'Tahran', 'Bağdat', 'Erbil', 'Antalya', 'İzmir', 'Ankara', 'Trabzon', 'Erzurum', 'Van', 'Diyarbakır',
   'Kayseri', 'Bodrum', 'Dalaman', 'Gaziantep', 'Samsun', 'New York', 'Tokyo', 'Singapur', 'Bangkok', 'Seul', 'Pekin', 'Toronto', 'Johannesburg', 'Nairobi', 'Lagos'];
+
+// Uçuş kulübü hangarı: GökSim'deki uçaklar ve fiyatları (sahip olunan uçakla uçulur)
+export const HANGAR = [
+  { id: 'f16', price: 15_000_000 },
+  { id: 'f2', price: 20_000_000 },
+  { id: 'f18', price: 35_000_000 },
+  { id: 'f15', price: 50_000_000 },
+  { id: 'rafale', price: 70_000_000 },
+  { id: 'b777', price: 250_000_000 },
+  { id: 'f22', price: 400_000_000 },
+  { id: 'su57', price: 450_000_000 },
+  { id: 'a380', price: 900_000_000 },
+  { id: 'sr71', price: 1_500_000_000 },
+];

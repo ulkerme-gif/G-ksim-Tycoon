@@ -12,7 +12,8 @@ import { Rain } from './weather.js';
 import { GFX, loadGfx, saveGfx } from './gfx.js';
 import { SkyDome } from './sky.js';
 import { NightLights } from './lights.js';
-import { Pilot } from './pilot.js';
+import { Pilot, loadGlb, hangarDef } from './flight.js';
+import { Landmarks } from './projects.js';
 import { UI } from './ui.js';
 import { loadAssets } from './assets.js';
 import { clamp, lerp, money } from './util.js';
@@ -90,6 +91,7 @@ class Game {
     await loadAssets();
     this.world = new World(this.scene);
     this.nightLights = new NightLights(this.scene, this.world);
+    this.landmarks = new Landmarks(this.scene);
     this.econ = new Economy(this);
     this.prog = new Progress(this);
     this.rain = new Rain(this.scene);
@@ -97,6 +99,7 @@ class Game {
     this.builder = new Builder(this);
     this.ui = new UI(this);
     this.pilot = new Pilot(this);
+    document.getElementById('fly-btn').addEventListener('click', () => this.pilot.openMenu());
     const B = this.builder;
     this.rig.buildDrag = () => B.isPaint();
     this.rig.onDrag = (p, x, y) => B.onDrag(p, x, y);
@@ -290,9 +293,19 @@ class Game {
     const cover = clamp(0.38 + 0.55 * fog + 0.7 * storm + (P && P.wx.kind === 'rush' ? -0.1 : 0), 0, 1);
     this.skyDome.update(this.camera, this.sky, day * (1 - 0.5 * storm), sunDir, this.sun.color, cover, grey, dt * Math.max(1, this.speed));
     const lightsOn = clamp(Math.max(1.25 - day * 2.3, fog * 0.7, storm * 0.85), 0, 1);
-    const obs = this.pilot && this.pilot.active && this.pilot.ac ? this.pilot.ac.pos : this.camera.position;
+    this.lightsOn = lightsOn;
+    const obs = this.pilot && this.pilot.active ? this.pilot.pos3() : this.camera.position;
     this.nightLights.update(this.camera, this.renderer, lightsOn, obs);
-    for (const m of this.world.scenery.windowMats) m.emissiveIntensity = clamp(1.1 - day * 2.2, 0, 1) * 1.3;
+    const win = clamp(1.1 - day * 2.2, 0, 1) * 1.3;
+    for (const m of this.world.scenery.windowMats) m.emissiveIntensity = win;
+    // anıt yapılar (her ~0,25 sn)
+    this.lmT = (this.lmT || 0) - dt;
+    if (this.lmT <= 0 && this.prog) {
+      this.lmT = 0.25;
+      const own = (this.prog.hangar || []).filter((id) => hangarDef(id)).map((id) => ({ id, span: hangarDef(id).span }));
+      this.landmarks.sync(this.prog, this.time, own, (id) => loadGlb(hangarDef(id).glbKey).then((scene) => ({ scene })).catch(() => null));
+      for (const m of this.landmarks.windowMats || []) m.emissiveIntensity = win;
+    }
   }
 
   // ---------------------------------------------------------------- kayıt

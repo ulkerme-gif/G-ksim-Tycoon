@@ -5,6 +5,7 @@ import { money, moneyShort, hhmm, esc, num, clamp } from './util.js';
 import { STATUS } from './sim.js';
 import { INCOME_NAMES, EXPENSE_NAMES } from './economy.js';
 import { levelInfo, UPGRADES, RIVAL_COUNT } from './progress.js';
+import { PROJECTS } from './projects.js';
 import { GFX } from './gfx.js';
 
 // ilerlemesi sayı olarak gösterilen başarımlar
@@ -149,7 +150,7 @@ export class UI {
     d.className = 'toast ' + kind;
     d.textContent = msg;
     box.prepend(d);
-    while (box.children.length > 5) box.lastChild.remove();
+    while (box.children.length > 3) box.lastChild.remove();
     setTimeout(() => d.classList.add('out'), 5200);
     setTimeout(() => d.remove(), 5800);
   }
@@ -160,13 +161,13 @@ export class UI {
     });
   }
 
-  modal(html, cb) {
+  modal(html, cb, opts = {}) {
     const m = $('#modal');
     $('#modal-card').innerHTML = html;
     m.hidden = false;
     m.onclick = (e) => {
       const b = e.target.closest('[data-m]');
-      if (e.target.id === 'modal') return this.closeModal();
+      if (e.target.id === 'modal') return opts.sticky ? null : this.closeModal();
       if (!b) return;
       const k = b.dataset.m;
       this.closeModal();
@@ -223,7 +224,7 @@ export class UI {
         <tr><td>Eğme</td><td>Sağ tık yukarı/aşağı · iki parmağı birlikte yukarı/aşağı kaydır · PageUp / PageDown</td></tr>
         <tr><td>İnşaat</td><td>Soldaki araçlar ya da 1–9 tuşları; R döndürür, Esc seçime döner</td></tr>
         <tr><td>Boyama</td><td>Taksi yolu, apron ve yıkım: sürükleyin (iPad'de tek parmak)</td></tr>
-        <tr><td>Uçuş kulübü</td><td>Sağ alttaki Uç düğmesi · çubuk ya da oklar/WASD · gaz PageUp/PageDown · G takım, F flap, B fren, C kamera, Esc çık</td></tr>
+        <tr><td>Uçuş kulübü</td><td>Sağ alttaki Uç düğmesi (GökSim) · oklar yunuslama/yatış · gaz + / − · G teker, F flap, B fren, A otopilot, C kamera, F1 yardım, Esc havalimanına dön</td></tr><tr><td>Anıt projeler</td><td>Geliştir sekmesi · Mükemmellik Hedefler sekmesinde</td></tr>
         <tr><td>Pil</td><td>Menü → Grafik ve pil: Pil tasarrufu / Dengeli / Yüksek</td></tr>
         <tr><td>Zaman</td><td>Boşluk duraklatır; üstteki düğmelerle hız</td></tr>
       </table><div class="row"><button class="btn" data-m="close">Tamam</button></div>`);
@@ -248,7 +249,7 @@ export class UI {
     if (name) {
       const b = $(`#tabs [data-panel="${name}"]`);
       if (b) b.classList.remove('dot');
-      $('#panel-title').textContent = { flights: 'Uçuşlar', airlines: 'Havayolları', finance: 'Finans', guide: 'Başlangıç rehberi', goals: 'Hedefler', upgrades: 'Yükseltmeler' }[name];
+      $('#panel-title').textContent = { flights: 'Uçuşlar', airlines: 'Havayolları', finance: 'Finans', guide: 'Başlangıç rehberi', goals: 'Hedefler', upgrades: 'Geliştir' }[name];
       this.renderPanel();
     }
   }
@@ -257,6 +258,7 @@ export class UI {
     const n = this.panel;
     if (!n) return;
     const body = $('#panel-body');
+    if (this.panelHold > performance.now()) return;   // onay beklenirken düğme yerinde kalsın
     const html = this['render_' + n]();
     if (html === this.lastPanelHtml && body.childElementCount) return;   // içerik değişmediyse dokunma (iPad'de düğmeler kaybolmasın)
     this.lastPanelHtml = html;
@@ -362,7 +364,10 @@ export class UI {
     const pct = clamp((E.totals.pax - cur.pax) / (nx.pax - cur.pax), 0, 1);
     const un = P.unlocksFor(L + 1);
     const bar = (v, n, col = 'var(--accent)') => `<div class="bar"><div style="width:${clamp(v / n, 0, 1) * 100}%;background:${col}"></div></div>`;
-    let h = `<div class="card lvcard"><div class="ch"><span class="lv-n big">${L}</span><b>${esc(cur.name)}</b>${P.incomeMul() > 1 ? `<span>Efsane bonusu: gelir +%${Math.round((P.incomeMul() - 1) * 100)}</span>` : ''}</div>
+    const PF = P.perfection();
+    let h = `<div class="card pfcard"><div class="ch"><b>Mükemmellik</b><span>%${String(PF.pct).replace('.', ',')}</span></div>${bar(PF.pct, 100, 'linear-gradient(90deg, #f5c518, #ff922b)')}
+      <div class="pfgrid">${PF.parts.map((p) => `<div><span>${esc(p.name)}</span><b>${num(Math.min(p.cur, p.max))}/${num(p.max)}</b></div>`).join('')}</div></div>`;
+    h += `<div class="card lvcard"><div class="ch"><span class="lv-n big">${L}</span><b>${esc(cur.name)}</b>${P.incomeMul() > 1 ? `<span>Efsane bonusu: gelir +%${Math.round((P.incomeMul() - 1) * 100)}</span>` : ''}</div>
       ${bar(pct, 1)}
       <div class="cf"><span>${num(E.totals.pax)} / ${num(nx.pax)} yolcu</span><span>Sonraki: ${esc(nx.name)}</span></div>
       <p class="muted">Seviye ${L + 1} ödülü <b>${money(nx.reward)}</b>${un.length ? '<br>' + un.map(esc).join('<br>') : ''}</p></div>`;
@@ -411,7 +416,20 @@ export class UI {
   render_upgrades() {
     const g = this.game;
     const P = g.prog, E = g.econ;
-    let h = '<p class="muted">Yükseltmeler kalıcıdır. Yeni kademeler seviye atladıkça açılır.</p>';
+    let h = '<h3>Anıt projeler</h3><p class="muted">Büyük, kalıcı yapılar. Günlerce sürer, aynı anda tek inşaat yapılır. Çitin güney dışında yükselirler.</p>';
+    for (const pr of PROJECTS) {
+      const st = P.proj[pr.id];
+      const c = P.canBuild(pr.id);
+      let foot;
+      if (st && st.done) foot = '<p class="okc">✓ Tamamlandı</p>';
+      else if (st) {
+        const f = clamp((g.time - st.start) / (st.end - st.start), 0, 1);
+        const left = Math.max(0, st.end - g.time);
+        foot = `<div class="bar"><div style="width:${f * 100}%;background:var(--accent)"></div></div><div class="cf"><span>İnşaat %${Math.round(f * 100)}</span><span>${left >= 1440 ? Math.ceil(left / 1440) + ' gün' : Math.ceil(left / 60) + ' saat'} kaldı</span></div>`;
+      } else foot = `<button class="btn ${c.ok ? 'primary' : ''}" data-proj="${pr.id}" ${c.ok ? '' : 'disabled'}>${c.ok ? `İnşa et · ${money(pr.cost)} · ${pr.days} gün` : `${c.why} · ${moneyShort(pr.cost)}`}</button>`;
+      h += `<div class="card up proj ${st && st.done ? 'done' : ''}"><div class="ch"><b>${esc(pr.name)}</b><span>${moneyShort(pr.cost)}</span></div><p class="muted">${esc(pr.desc)}</p><p class="eff"><b>${esc(pr.eff)}</b></p>${foot}</div>`;
+    }
+    h += '<h3>Yükseltmeler</h3><p class="muted">Yükseltmeler kalıcıdır. Yeni kademeler seviye atladıkça açılır.</p>';
     for (const u of UPGRADES) {
       const n = P.up(u.id);
       const nx = P.upCost(u);
@@ -454,6 +472,19 @@ export class UI {
     const E = this.game.econ;
     if (b.dataset.accept) {
       E.accept(+b.dataset.accept);
+      this.renderPanel();
+    }
+    if (b.dataset.proj) {
+      // iki dokunuşla onay: büyük harcama
+      if (b.dataset.sure !== '1') {
+        b.dataset.sure = '1';
+        b.textContent = 'Onaylamak için yeniden dokunun';
+        this.panelHold = performance.now() + 4000;
+        return;
+      }
+      this.panelHold = 0;
+      this.game.prog.startProject(b.dataset.proj);
+      this.lastPanelHtml = null;
       this.renderPanel();
     }
     if (b.dataset.up) {
